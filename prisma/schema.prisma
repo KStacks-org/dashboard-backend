@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ServiceStatus {
+  LIVE
+  BETA
+  COMING_SOON
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  username           String   @unique @db.VarChar(50)
+  displayName        String   @map("display_name") @db.VarChar(100)
+  passwordHash       String   @map("password_hash")
+  mustChangePassword Boolean  @default(true) @map("must_change_password")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  createdTasks  Task[]         @relation("TaskCreator")
+  assignedTasks TaskAssignee[]
+
+  @@map("users")
+}
+
+model Service {
+  id          String        @id @default(uuid())
+  name        String        @db.VarChar(100)
+  codename    String        @unique @db.VarChar(50)
+  tagline     String        @db.VarChar(200)
+  description String        @db.Text
+  status      ServiceStatus @default(LIVE)
+  url         String?       @db.VarChar(300)
+  sortOrder   Int           @default(0) @map("sort_order")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tasks Task[]
+
+  @@map("services")
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  title       String    @db.VarChar(200)
+  description String?   @db.Text
+  deadline    DateTime? @db.Timestamptz(6)
+  priority    Priority  @default(MEDIUM)
+  isArchived  Boolean   @default(false) @map("is_archived")
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  serviceId String?  @map("service_id")
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  createdById String @map("created_by")
+  createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  assignees TaskAssignee[]
+  subtasks  Subtask[]
+
+  @@index([deadline])
+  @@index([serviceId])
+  @@index([createdById])
+  @@index([isArchived])
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  taskId     String   @map("task_id")
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  @@id([taskId, userId])
+  @@index([userId])
+  @@map("task_assignees")
+}
+
+model Subtask {
+  id          String   @id @default(uuid())
+  taskId      String   @map("task_id")
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title       String   @db.VarChar(200)
+  isCompleted Boolean  @default(false) @map("is_completed")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([taskId])
+  @@map("subtasks")
+}
+
+/// Backing table for connect-pg-simple's express-session store.
+model Session {
+  sid    String   @id @db.VarChar
+  sess   Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire], map: "IDX_session_expire")
+  @@map("session")
+}
