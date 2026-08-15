@@ -4,7 +4,7 @@ import { z } from "zod";
 const envSchema = z
   .object({
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-    PORT: z.coerce.number().int().positive().default(4000),
+    PORT: z.coerce.number().int().positive().default(4100),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     APP_URL: z.string().url("APP_URL must be a valid URL"),
     FRONTEND_URL: z.string().url("FRONTEND_URL must be a valid URL"),
