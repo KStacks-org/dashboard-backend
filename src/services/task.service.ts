@@ -1,5 +1,6 @@
 import { ConflictError, ForbiddenError, NotFoundError } from "@/errors/AppError.js";
 import { prisma } from "@/lib/prisma.js";
+import { notify } from "@/services/notification.service.js";
 import type { CreateTaskInput, UpdateTaskInput } from "@/validation/task.schema.js";
 
 const memberSelect = { id: true, displayName: true, username: true } as const;
@@ -35,8 +36,8 @@ export async function getTask(id: string) {
   return task;
 }
 
-export function createTask(data: CreateTaskInput, creatorId: string) {
-  return prisma.task.create({
+export async function createTask(data: CreateTaskInput, creatorId: string) {
+  const task = await prisma.task.create({
     data: {
       title: data.title,
       description: data.description ?? null,
@@ -49,16 +50,35 @@ export function createTask(data: CreateTaskInput, creatorId: string) {
     },
     include: taskInclude,
   });
+
+  await notify(
+    data.assigneeIds.map((userId) => ({
+      userId,
+      type: "TASK_ASSIGNED" as const,
+      body: task.title,
+      actorId: creatorId,
+      taskId: task.id,
+    })),
+  );
+
+  return task;
 }
 
-export async function updateTask(id: string, data: UpdateTaskInput) {
+export async function updateTask(id: string, data: UpdateTaskInput, actorId?: string) {
   await ensureTaskExists(id);
 
   if (data.assigneeIds) {
     await ensureRemovedAssigneesHoldNoSubtasks(id, data.assigneeIds);
   }
 
-  return prisma.$transaction(async (tx) => {
+  // Captured before the rewrite so only genuinely new assignees are notified.
+  const previousAssignees = data.assigneeIds
+    ? (await prisma.taskAssignee.findMany({ where: { taskId: id }, select: { userId: true } })).map(
+        (row) => row.userId,
+      )
+    : [];
+
+  const task = await prisma.$transaction(async (tx) => {
     if (data.assigneeIds) {
       await tx.taskAssignee.deleteMany({ where: { taskId: id } });
       await tx.taskAssignee.createMany({
@@ -79,6 +99,21 @@ export async function updateTask(id: string, data: UpdateTaskInput) {
       include: taskInclude,
     });
   });
+
+  if (data.assigneeIds) {
+    const added = data.assigneeIds.filter((userId) => !previousAssignees.includes(userId));
+    await notify(
+      added.map((userId) => ({
+        userId,
+        type: "TASK_ASSIGNED" as const,
+        body: task.title,
+        actorId: actorId ?? null,
+        taskId: task.id,
+      })),
+    );
+  }
+
+  return task;
 }
 
 /**

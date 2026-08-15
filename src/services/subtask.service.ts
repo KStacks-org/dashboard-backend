@@ -1,5 +1,6 @@
 import { BadRequestError, NotFoundError } from "@/errors/AppError.js";
 import { prisma } from "@/lib/prisma.js";
+import { notify } from "@/services/notification.service.js";
 import type { ReorderSubtasksInput, UpdateSubtaskInput } from "@/validation/subtask.schema.js";
 
 const subtaskInclude = {
@@ -19,16 +20,16 @@ export async function addSubtask(taskId: string, title: string, assigneeId?: str
   });
 }
 
-export async function updateSubtask(id: string, data: UpdateSubtaskInput) {
+export async function updateSubtask(id: string, data: UpdateSubtaskInput, actorId?: string) {
   const subtask = await prisma.subtask.findUnique({
     where: { id },
-    select: { id: true, taskId: true },
+    select: { id: true, taskId: true, assigneeId: true },
   });
   if (!subtask) throw new NotFoundError("Subtask not found");
 
   if (data.assigneeId) await ensureAssigneeIsOnTask(subtask.taskId, data.assigneeId);
 
-  return prisma.subtask.update({
+  const updated = await prisma.subtask.update({
     where: { id },
     data: {
       ...(data.title !== undefined && { title: data.title }),
@@ -37,6 +38,20 @@ export async function updateSubtask(id: string, data: UpdateSubtaskInput) {
     },
     include: subtaskInclude,
   });
+
+  if (updated.assigneeId && updated.assigneeId !== subtask.assigneeId) {
+    await notify([
+      {
+        userId: updated.assigneeId,
+        type: "SUBTASK_ASSIGNED",
+        body: updated.title,
+        actorId: actorId ?? null,
+        taskId: updated.taskId,
+      },
+    ]);
+  }
+
+  return updated;
 }
 
 export async function deleteSubtask(id: string) {

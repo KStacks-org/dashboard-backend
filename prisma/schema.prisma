@@ -21,6 +21,28 @@ enum TaskStatus {
   BLOCKED
 }
 
+/// Everyone works with equal permissions; ADMIN additionally manages the roster.
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+/// A defect that exists, as opposed to a Task, which is work to be done.
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  SUBTASK_ASSIGNED
+  COMMENT_MENTION
+  ISSUE_ASSIGNED
+  DEADLINE_SOON
+}
+
 enum ServiceStatus {
   LIVE
   BETA
@@ -45,19 +67,35 @@ model User {
 
   /// Stable internal key used by the seed to update a row in place, so a
   /// corrected email never creates a duplicate account. Not exposed by the API.
-  username    String @unique @db.VarChar(50)
-  displayName String @map("display_name") @db.VarChar(100)
+  username    String   @unique @db.VarChar(50)
+  displayName String   @map("display_name") @db.VarChar(100)
+  role        UserRole @default(MEMBER)
+
+  /// Roster profile shown on the Team page, maintained by an admin.
+  jobTitle         String?  @map("job_title") @db.VarChar(120)
+  /// Free text so it can name internal repos (Infrastructure, Auth Service)
+  /// that are not public KStack services.
+  responsibilities String[] @default([])
+
+  /// Soft-off switch: a removed member keeps their authored history but can no
+  /// longer sign in or be assigned new work.
+  isActive           Boolean  @default(true) @map("is_active")
   passwordHash       String   @map("password_hash")
   mustChangePassword Boolean  @default(true) @map("must_change_password")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  createdTasks    Task[]        @relation("TaskCreator")
-  assignedTasks   TaskAssignee[]
-  assignedSubtasks Subtask[]    @relation("SubtaskAssignee")
-  comments        TaskComment[]
-  ownedServices   Service[]     @relation("ServiceOwner")
+  createdTasks     Task[]         @relation("TaskCreator")
+  assignedTasks    TaskAssignee[]
+  assignedSubtasks Subtask[]      @relation("SubtaskAssignee")
+  comments         TaskComment[]
+  ownedServices    Service[]      @relation("ServiceOwner")
+  assignedIssues   Issue[]        @relation("IssueAssignee")
+  reportedIssues   Issue[]        @relation("IssueReporter")
+  notifications    Notification[] @relation("NotificationRecipient")
+  triggered        Notification[] @relation("NotificationActor")
 
+  @@index([isActive])
   @@map("users")
 }
 
@@ -85,6 +123,7 @@ model Service {
 
   tasks        Task[]
   healthChecks ServiceHealthCheck[]
+  issues       Issue[]
 
   @@index([ownerId])
   @@map("services")
@@ -127,12 +166,18 @@ model Task {
   createdById String @map("created_by")
   createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
-  assignees TaskAssignee[]
-  subtasks  Subtask[]
-  comments  TaskComment[]
-  links     TaskLink[]
+  milestoneId String?    @map("milestone_id")
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+
+  assignees     TaskAssignee[]
+  subtasks      Subtask[]
+  comments      TaskComment[]
+  links         TaskLink[]
+  notifications Notification[]
+  fromIssue     Issue?         @relation("IssueConvertedTask")
 
   @@index([deadline])
+  @@index([milestoneId])
   @@index([serviceId])
   @@index([createdById])
   @@index([isArchived])
@@ -153,12 +198,12 @@ model TaskAssignee {
 }
 
 model Subtask {
-  id          String   @id @default(uuid())
-  taskId      String   @map("task_id")
-  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  title       String   @db.VarChar(200)
-  isCompleted Boolean  @default(false) @map("is_completed")
-  sortOrder   Int      @default(0) @map("sort_order")
+  id          String  @id @default(uuid())
+  taskId      String  @map("task_id")
+  task        Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title       String  @db.VarChar(200)
+  isCompleted Boolean @default(false) @map("is_completed")
+  sortOrder   Int     @default(0) @map("sort_order")
 
   /// A subtask carries at most one owner, and that person must already be an
   /// assignee of the parent task. Enforced in the service layer; SetNull here
@@ -233,4 +278,79 @@ model Session {
 
   @@index([expire], map: "IDX_session_expire")
   @@map("session")
+}
+
+/// A dated goal that tasks roll up into, e.g. "Portal MVP".
+model Milestone {
+  id          String    @id @default(uuid())
+  title       String    @db.VarChar(150)
+  description String?   @db.Text
+  deadline    DateTime? @db.Timestamptz(6)
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tasks Task[]
+
+  @@map("milestones")
+}
+
+/// Something that is broken, tracked separately from the work to fix it. An
+/// issue can be promoted into a Task, after which the two stay linked.
+model Issue {
+  id        String @id @default(uuid())
+  reference Int    @unique @default(autoincrement())
+
+  title       String      @db.VarChar(200)
+  description String?     @db.Text
+  priority    Priority    @default(MEDIUM)
+  status      IssueStatus @default(OPEN)
+
+  serviceId String?  @map("service_id")
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  assigneeId String? @map("assignee_id")
+  assignee   User?   @relation("IssueAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  reportedById String @map("reported_by")
+  reportedBy   User   @relation("IssueReporter", fields: [reportedById], references: [id], onDelete: Restrict)
+
+  /// Set once the issue has been converted; SetNull keeps the issue if the
+  /// task it produced is later deleted.
+  convertedTaskId String? @unique @map("converted_task_id")
+  convertedTask   Task?   @relation("IssueConvertedTask", fields: [convertedTaskId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  notifications Notification[]
+
+  @@index([status])
+  @@index([serviceId])
+  @@index([assigneeId])
+  @@map("issues")
+}
+
+model Notification {
+  id     String           @id @default(uuid())
+  type   NotificationType
+  body   String           @db.VarChar(300)
+  isRead Boolean          @default(false) @map("is_read")
+
+  userId String @map("user_id")
+  user   User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Who caused it. Null for system-generated ones such as deadline reminders.
+  actorId String? @map("actor_id")
+  actor   User?   @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  taskId  String? @map("task_id")
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  issueId String? @map("issue_id")
+  issue   Issue?  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, isRead, createdAt])
+  @@map("notifications")
 }

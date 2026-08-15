@@ -30,7 +30,7 @@ export const create = asyncHandler(async (req, res) => {
 export const update = asyncHandler(async (req, res) => {
   const { id } = uuidParamSchema.parse(req.params);
   const data = updateTaskSchema.parse(req.body);
-  const task = await taskService.updateTask(id, data);
+  const task = await taskService.updateTask(id, data, req.user?.id);
   res.json({ task });
 });
 

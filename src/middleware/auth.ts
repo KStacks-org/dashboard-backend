@@ -8,7 +8,8 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
   if (!userId) return next();
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
+  // Deactivating someone takes effect on their next request, not just at login.
+  if (!user || !user.isActive) {
     req.session.userId = undefined;
     return next();
   }

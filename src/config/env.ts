@@ -36,6 +36,12 @@ const envSchema = z.object({
         .filter(Boolean),
     )
     .refine((domains) => domains.length > 0, "At least one allowed email domain is required"),
+
+  // GitHub activity feed. Works unauthenticated at 60 requests/hour, which one
+  // refresh nearly exhausts — a read-only token raises it to 5000.
+  GITHUB_ORG: z.string().trim().min(1).default("KStacks-org"),
+  GITHUB_TOKEN: z.string().trim().min(1).optional(),
+  GITHUB_CACHE_MINUTES: z.coerce.number().int().positive().max(1440).default(20),
 });
 
 const parsed = envSchema.safeParse(process.env);

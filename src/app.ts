@@ -11,11 +11,16 @@ import { apiRateLimiter } from "@/middleware/rateLimiters.js";
 import { sessionMiddleware } from "@/middleware/session.js";
 import { authRouter } from "@/routes/auth.routes.js";
 import { commentRouter } from "@/routes/comment.routes.js";
+import { issueRouter } from "@/routes/issue.routes.js";
 import { linkRouter } from "@/routes/link.routes.js";
+import { milestoneRouter } from "@/routes/milestone.routes.js";
+import { notificationRouter } from "@/routes/notification.routes.js";
+import { githubRouter, overviewRouter } from "@/routes/overview.routes.js";
 import { serviceRouter } from "@/routes/service.routes.js";
 import { sponsoredProjectRouter } from "@/routes/sponsoredProject.routes.js";
 import { subtaskRouter } from "@/routes/subtask.routes.js";
 import { taskRouter } from "@/routes/task.routes.js";
+import { teamRouter } from "@/routes/team.routes.js";
 import { userRouter } from "@/routes/user.routes.js";
 
 export function createApp() {
@@ -44,6 +49,12 @@ export function createApp() {
   protectedRouter.use("/comments", commentRouter);
   protectedRouter.use("/links", linkRouter);
   protectedRouter.use("/sponsored-projects", sponsoredProjectRouter);
+  protectedRouter.use("/overview", overviewRouter);
+  protectedRouter.use("/team", teamRouter);
+  protectedRouter.use("/issues", issueRouter);
+  protectedRouter.use("/milestones", milestoneRouter);
+  protectedRouter.use("/notifications", notificationRouter);
+  protectedRouter.use("/github", githubRouter);
   app.use("/api", protectedRouter);
 
   app.use(notFoundHandler);

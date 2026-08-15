@@ -17,7 +17,14 @@ const TEMPORARY_PASSWORD = "123456";
 // that can never belong to a real mailbox, so a placeholder can never
 // accidentally let an unrelated KAU student in. Those accounts still work as
 // task assignees — they simply cannot be logged into until the email is filled.
-const USERS: Array<{ username: string; email: string; displayName: string }> = [
+const USERS: Array<{
+  username: string;
+  email: string;
+  displayName: string;
+  role?: "ADMIN" | "MEMBER";
+  jobTitle?: string;
+  responsibilities?: string[];
+}> = [
   { username: "tariq", email: "tariq@pending.invalid", displayName: "طارق" },
   { username: "yasser.alawfi", email: "yasser.alawfi@pending.invalid", displayName: "ياسر العوفي" },
   {
@@ -41,6 +48,7 @@ const USERS: Array<{ username: string; email: string; displayName: string }> = [
     username: "abdullah.sayrawan",
     email: "aalserawan@stu.kau.edu.sa",
     displayName: "عبدالله السيروان",
+    role: "ADMIN",
   },
 ];
 
@@ -129,11 +137,20 @@ async function main() {
       where: { username: user.username },
       // Email and display name are re-applied so corrections take effect, but
       // the password is never reset for someone who has already changed theirs.
-      update: { displayName: user.displayName, email: user.email },
+      update: {
+        displayName: user.displayName,
+        email: user.email,
+        role: user.role ?? "MEMBER",
+        ...(user.jobTitle !== undefined && { jobTitle: user.jobTitle }),
+        ...(user.responsibilities !== undefined && { responsibilities: user.responsibilities }),
+      },
       create: {
         username: user.username,
         email: user.email,
         displayName: user.displayName,
+        role: user.role ?? "MEMBER",
+        jobTitle: user.jobTitle ?? null,
+        responsibilities: user.responsibilities ?? [],
         passwordHash: temporaryPasswordHash,
         mustChangePassword: true,
       },

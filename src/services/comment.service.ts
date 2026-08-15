@@ -1,5 +1,6 @@
 import { ForbiddenError, NotFoundError } from "@/errors/AppError.js";
 import { prisma } from "@/lib/prisma.js";
+import { findMentionedUsers, notify } from "@/services/notification.service.js";
 
 const commentInclude = {
   author: { select: { id: true, displayName: true, username: true } },
@@ -9,10 +10,25 @@ export async function addComment(taskId: string, authorId: string, body: string)
   const task = await prisma.task.findUnique({ where: { id: taskId }, select: { id: true } });
   if (!task) throw new NotFoundError("Task not found");
 
-  return prisma.taskComment.create({
+  const comment = await prisma.taskComment.create({
     data: { taskId, authorId, body },
     include: commentInclude,
   });
+
+  // "@name" in the body pings that person, matching on their email handle or
+  // any part of their display name.
+  const mentioned = await findMentionedUsers(body);
+  await notify(
+    mentioned.map((userId) => ({
+      userId,
+      type: "COMMENT_MENTION" as const,
+      body,
+      actorId: authorId,
+      taskId,
+    })),
+  );
+
+  return comment;
 }
 
 /** A comment is someone's own words — only its author may edit or remove it. */

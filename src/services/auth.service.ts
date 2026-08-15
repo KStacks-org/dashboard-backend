@@ -9,7 +9,9 @@ import { hashPassword, verifyPassword } from "@/utils/password.js";
  */
 export async function authenticate(email: string, password: string) {
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new EmailNotAllowedError();
+  // A deactivated member is treated exactly like one who was never on the
+  // roster, so removing access needs no separate code path.
+  if (!user || !user.isActive) throw new EmailNotAllowedError();
 
   const valid = await verifyPassword(user.passwordHash, password);
   if (!valid) throw new UnauthorizedError("Invalid email or password");

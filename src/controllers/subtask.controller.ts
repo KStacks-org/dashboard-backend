@@ -17,7 +17,7 @@ export const create = asyncHandler(async (req, res) => {
 export const update = asyncHandler(async (req, res) => {
   const { id } = uuidParamSchema.parse(req.params);
   const data = updateSubtaskSchema.parse(req.body);
-  const subtask = await subtaskService.updateSubtask(id, data);
+  const subtask = await subtaskService.updateSubtask(id, data, req.user?.id);
   res.json({ subtask });
 });
 
