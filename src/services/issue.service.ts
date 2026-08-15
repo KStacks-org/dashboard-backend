@@ -6,7 +6,7 @@ import type { CreateIssueInput, UpdateIssueInput } from "@/validation/issue.sche
 const memberSelect = { id: true, displayName: true, email: true } as const;
 
 const issueInclude = {
-  service: { select: { id: true, name: true, codename: true } },
+  service: { select: { id: true, name: true, codename: true, logoUrl: true } },
   assignee: { select: memberSelect },
   reportedBy: { select: memberSelect },
   convertedTask: { select: { id: true, reference: true, title: true } },

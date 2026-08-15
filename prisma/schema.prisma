@@ -109,6 +109,12 @@ model Service {
   url         String?       @db.VarChar(300)
   sortOrder   Int           @default(0) @map("sort_order")
 
+  /// Absolute URL of the service's brand mark on kstacks.org, captured by the
+  /// catalogue sync. The frontend prefers its own bundled copy and only falls
+  /// back to this, so a service added upstream still shows a real logo before
+  /// anyone commits an asset for it.
+  logoUrl String? @map("logo_url") @db.VarChar(300)
+
   /// Team-authored fields. The kstacks.org sync script never overwrites these —
   /// it only refreshes the public catalogue fields above.
   overview       String? @db.Text

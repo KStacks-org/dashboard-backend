@@ -19,6 +19,18 @@ const envSchema = z.object({
     .transform((v) => v === "true"),
   HEALTH_CHECK_INTERVAL_MINUTES: z.coerce.number().int().positive().max(1440).default(5),
 
+  // Background refresh of the public service catalogue from the KStacks site.
+  // A service added there appears here on the next run, with no manual step.
+  SERVICE_SYNC_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  SERVICE_SYNC_INTERVAL_HOURS: z.coerce.number().int().positive().max(168).default(24),
+  SERVICE_CATALOG_URL: z
+    .string()
+    .url("SERVICE_CATALOG_URL must be a valid URL")
+    .default("https://kstacks.org/"),
+
   // Cookie scope. Leave unset for host-only cookies (required in development —
   // a browser rejects a ".kstacks.org" cookie served from localhost). Set to
   // ".kstacks.org" in production to share the session across KStack subdomains.

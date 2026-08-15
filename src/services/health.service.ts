@@ -89,6 +89,7 @@ export async function getHealthOverview() {
       id: service.id,
       name: service.name,
       codename: service.codename,
+      logoUrl: service.logoUrl,
       status: service.status,
       url: service.url,
       healthCheckUrl: service.healthCheckUrl,

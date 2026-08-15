@@ -1,5 +1,6 @@
 import { createApp } from "@/app.js";
 import { env } from "@/config/env.js";
+import { startCatalogScheduler, stopCatalogScheduler } from "@/lib/catalogScheduler.js";
 import { startHealthScheduler, stopHealthScheduler } from "@/lib/healthScheduler.js";
 import { logger } from "@/lib/logger.js";
 import { prisma } from "@/lib/prisma.js";
@@ -14,10 +15,12 @@ async function main() {
   });
 
   startHealthScheduler();
+  startCatalogScheduler();
 
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     stopHealthScheduler();
+    stopCatalogScheduler();
     server.close(async () => {
       await prisma.$disconnect();
       process.exit(0);
