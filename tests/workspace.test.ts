@@ -238,6 +238,64 @@ describe("team, issues, milestones and notifications", () => {
       });
     });
 
+    it("attaches a task to a milestone through the task API and moves its progress", async () => {
+      const created = await adminAgent
+        .post("/api/milestones")
+        .set("x-csrf-token", adminCsrf)
+        .send({ title: "Attach via API" });
+      const milestoneId = created.body.milestone.id;
+      createdMilestoneIds.push(milestoneId);
+
+      // Attached at creation time.
+      const task = await adminAgent
+        .post("/api/tasks")
+        .set("x-csrf-token", adminCsrf)
+        .send({ title: "Born attached", assigneeIds: [adminId], milestoneId });
+      expect(task.status).toBe(201);
+      expect(task.body.task.milestone.id).toBe(milestoneId);
+
+      // And attached later by editing an existing task.
+      const loose = await adminAgent
+        .post("/api/tasks")
+        .set("x-csrf-token", adminCsrf)
+        .send({ title: "Attached later", assigneeIds: [adminId] });
+      expect(loose.body.task.milestone).toBeNull();
+
+      const attached = await adminAgent
+        .patch(`/api/tasks/${loose.body.task.id}`)
+        .set("x-csrf-token", adminCsrf)
+        .send({ milestoneId });
+      expect(attached.body.task.milestone.id).toBe(milestoneId);
+
+      // Progress now reflects both, and finishing one moves it.
+      await adminAgent
+        .post(`/api/tasks/${task.body.task.id}/archive`)
+        .set("x-csrf-token", adminCsrf)
+        .send();
+
+      const after = await adminAgent.get(`/api/milestones/${milestoneId}`);
+      expect(after.body.milestone.progress).toEqual({
+        totalTasks: 2,
+        completedTasks: 1,
+        percent: 50,
+      });
+
+      // Detaching is an explicit null, not an omission.
+      const detached = await adminAgent
+        .patch(`/api/tasks/${loose.body.task.id}`)
+        .set("x-csrf-token", adminCsrf)
+        .send({ milestoneId: null });
+      expect(detached.body.task.milestone).toBeNull();
+    });
+
+    it("rejects a malformed milestone id on a task", async () => {
+      const res = await adminAgent
+        .post("/api/tasks")
+        .set("x-csrf-token", adminCsrf)
+        .send({ title: "Bad milestone", assigneeIds: [adminId], milestoneId: "not-a-uuid" });
+      expect(res.status).toBe(400);
+    });
+
     it("keeps tasks when the milestone is deleted", async () => {
       const created = await adminAgent
         .post("/api/milestones")

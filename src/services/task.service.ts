@@ -7,6 +7,7 @@ const memberSelect = { id: true, displayName: true, username: true } as const;
 
 const taskInclude = {
   service: true,
+  milestone: { select: { id: true, title: true, deadline: true } },
   createdBy: { select: memberSelect },
   assignees: { include: { user: { select: memberSelect } } },
   subtasks: {
@@ -45,6 +46,7 @@ export async function createTask(data: CreateTaskInput, creatorId: string) {
       priority: data.priority,
       status: data.status,
       serviceId: data.serviceId ?? null,
+      milestoneId: data.milestoneId ?? null,
       createdById: creatorId,
       assignees: { createMany: { data: data.assigneeIds.map((userId) => ({ userId })) } },
     },
@@ -95,6 +97,7 @@ export async function updateTask(id: string, data: UpdateTaskInput, actorId?: st
         ...(data.priority !== undefined && { priority: data.priority }),
         ...(data.status !== undefined && { status: data.status }),
         ...(data.serviceId !== undefined && { serviceId: data.serviceId }),
+        ...(data.milestoneId !== undefined && { milestoneId: data.milestoneId }),
       },
       include: taskInclude,
     });

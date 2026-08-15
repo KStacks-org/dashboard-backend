@@ -18,6 +18,7 @@ export const createTaskSchema = z.object({
   priority: prioritySchema.default("MEDIUM"),
   status: taskStatusSchema.default("TODO"),
   serviceId: z.string().uuid("Invalid service id").optional().nullable(),
+  milestoneId: z.string().uuid("Invalid milestone id").optional().nullable(),
   assigneeIds: assigneeIdsSchema,
 });
 
@@ -28,6 +29,7 @@ export const updateTaskSchema = z.object({
   priority: prioritySchema.optional(),
   status: taskStatusSchema.optional(),
   serviceId: z.string().uuid("Invalid service id").optional().nullable(),
+  milestoneId: z.string().uuid("Invalid milestone id").optional().nullable(),
   assigneeIds: assigneeIdsSchema.optional(),
 });
 
