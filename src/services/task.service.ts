@@ -1,14 +1,22 @@
-import { ForbiddenError, NotFoundError } from "@/errors/AppError.js";
+import { ConflictError, ForbiddenError, NotFoundError } from "@/errors/AppError.js";
 import { prisma } from "@/lib/prisma.js";
 import type { CreateTaskInput, UpdateTaskInput } from "@/validation/task.schema.js";
 
+const memberSelect = { id: true, displayName: true, username: true } as const;
+
 const taskInclude = {
   service: true,
-  createdBy: { select: { id: true, displayName: true, username: true } },
-  assignees: {
-    include: { user: { select: { id: true, displayName: true, username: true } } },
+  createdBy: { select: memberSelect },
+  assignees: { include: { user: { select: memberSelect } } },
+  subtasks: {
+    orderBy: { sortOrder: "asc" as const },
+    include: { assignee: { select: memberSelect } },
   },
-  subtasks: { orderBy: { sortOrder: "asc" as const } },
+  links: { orderBy: { createdAt: "asc" as const } },
+  comments: {
+    orderBy: { createdAt: "asc" as const },
+    include: { author: { select: memberSelect } },
+  },
 };
 
 export function listTasks(archived: boolean) {
@@ -34,6 +42,7 @@ export function createTask(data: CreateTaskInput, creatorId: string) {
       description: data.description ?? null,
       deadline: data.deadline ?? null,
       priority: data.priority,
+      status: data.status,
       serviceId: data.serviceId ?? null,
       createdById: creatorId,
       assignees: { createMany: { data: data.assigneeIds.map((userId) => ({ userId })) } },
@@ -44,6 +53,10 @@ export function createTask(data: CreateTaskInput, creatorId: string) {
 
 export async function updateTask(id: string, data: UpdateTaskInput) {
   await ensureTaskExists(id);
+
+  if (data.assigneeIds) {
+    await ensureRemovedAssigneesHoldNoSubtasks(id, data.assigneeIds);
+  }
 
   return prisma.$transaction(async (tx) => {
     if (data.assigneeIds) {
@@ -60,11 +73,37 @@ export async function updateTask(id: string, data: UpdateTaskInput) {
         ...(data.description !== undefined && { description: data.description }),
         ...(data.deadline !== undefined && { deadline: data.deadline }),
         ...(data.priority !== undefined && { priority: data.priority }),
+        ...(data.status !== undefined && { status: data.status }),
         ...(data.serviceId !== undefined && { serviceId: data.serviceId }),
       },
       include: taskInclude,
     });
   });
+}
+
+/**
+ * Refuses to drop someone from a task while they still own subtasks on it.
+ * Silently unassigning their work would lose accountability with no signal, so
+ * the caller is told exactly who to reassign first.
+ */
+async function ensureRemovedAssigneesHoldNoSubtasks(taskId: string, nextAssigneeIds: string[]) {
+  const keep = new Set(nextAssigneeIds);
+
+  const strandedSubtasks = await prisma.subtask.findMany({
+    where: { taskId, assigneeId: { not: null, notIn: nextAssigneeIds } },
+    select: { assignee: { select: { id: true, displayName: true } } },
+  });
+
+  const blockedBy = new Map<string, string>();
+  for (const { assignee } of strandedSubtasks) {
+    if (assignee && !keep.has(assignee.id)) blockedBy.set(assignee.id, assignee.displayName);
+  }
+
+  if (blockedBy.size > 0) {
+    throw new ConflictError("Reassign their subtasks before removing them from this task", {
+      blockedBy: [...blockedBy].map(([id, displayName]) => ({ id, displayName })),
+    });
+  }
 }
 
 export async function archiveTask(id: string) {

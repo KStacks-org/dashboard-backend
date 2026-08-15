@@ -10,7 +10,10 @@ import { errorHandler, notFoundHandler } from "@/middleware/errorHandler.js";
 import { apiRateLimiter } from "@/middleware/rateLimiters.js";
 import { sessionMiddleware } from "@/middleware/session.js";
 import { authRouter } from "@/routes/auth.routes.js";
+import { commentRouter } from "@/routes/comment.routes.js";
+import { linkRouter } from "@/routes/link.routes.js";
 import { serviceRouter } from "@/routes/service.routes.js";
+import { sponsoredProjectRouter } from "@/routes/sponsoredProject.routes.js";
 import { subtaskRouter } from "@/routes/subtask.routes.js";
 import { taskRouter } from "@/routes/task.routes.js";
 import { userRouter } from "@/routes/user.routes.js";
@@ -38,6 +41,9 @@ export function createApp() {
   protectedRouter.use("/users", userRouter);
   protectedRouter.use("/tasks", taskRouter);
   protectedRouter.use("/subtasks", subtaskRouter);
+  protectedRouter.use("/comments", commentRouter);
+  protectedRouter.use("/links", linkRouter);
+  protectedRouter.use("/sponsored-projects", sponsoredProjectRouter);
   app.use("/api", protectedRouter);
 
   app.use(notFoundHandler);

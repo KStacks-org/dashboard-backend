@@ -12,6 +12,12 @@ const envSchema = z.object({
   // for automated test runs, never on the real server.
   LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
   LOGIN_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
+  // Background probing of service health URLs.
+  HEALTH_CHECK_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  HEALTH_CHECK_INTERVAL_MINUTES: z.coerce.number().int().positive().max(1440).default(5),
 });
 
 const parsed = envSchema.safeParse(process.env);

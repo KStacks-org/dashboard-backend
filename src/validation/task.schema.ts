@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const prioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
+export const taskStatusSchema = z.enum(["TODO", "IN_PROGRESS", "BLOCKED"]);
 
 const assigneeIdsSchema = z
   .array(z.string().uuid("Invalid assignee id"))
@@ -15,6 +16,7 @@ export const createTaskSchema = z.object({
   description: z.string().trim().max(5000).optional().nullable(),
   deadline: z.coerce.date().optional().nullable(),
   priority: prioritySchema.default("MEDIUM"),
+  status: taskStatusSchema.default("TODO"),
   serviceId: z.string().uuid("Invalid service id").optional().nullable(),
   assigneeIds: assigneeIdsSchema,
 });
@@ -24,6 +26,7 @@ export const updateTaskSchema = z.object({
   description: z.string().trim().max(5000).optional().nullable(),
   deadline: z.coerce.date().optional().nullable(),
   priority: prioritySchema.optional(),
+  status: taskStatusSchema.optional(),
   serviceId: z.string().uuid("Invalid service id").optional().nullable(),
   assigneeIds: assigneeIdsSchema.optional(),
 });

@@ -29,6 +29,9 @@ const SERVICES: Array<{
   status: "LIVE" | "BETA" | "COMING_SOON";
   url: string | null;
   sortOrder: number;
+  /// Probed by the health scheduler. Live services default to their public URL;
+  /// unreleased ones have nothing to probe yet.
+  healthCheckUrl: string | null;
 }> = [
   {
     name: "Index",
@@ -39,6 +42,7 @@ const SERVICES: Array<{
     status: "LIVE",
     url: "https://kauindex.com",
     sortOrder: 1,
+    healthCheckUrl: "https://kauindex.com",
   },
   {
     name: "Planner",
@@ -48,6 +52,7 @@ const SERVICES: Array<{
     status: "LIVE",
     url: "https://kauindex.com/planner",
     sortOrder: 2,
+    healthCheckUrl: "https://kauindex.com/planner",
   },
   {
     name: "Groups",
@@ -57,6 +62,7 @@ const SERVICES: Array<{
     status: "BETA",
     url: "https://groups.kstacks.org",
     sortOrder: 3,
+    healthCheckUrl: "https://groups.kstacks.org",
   },
   {
     name: "Grades",
@@ -66,6 +72,7 @@ const SERVICES: Array<{
     status: "LIVE",
     url: "https://grades.kstacks.org",
     sortOrder: 4,
+    healthCheckUrl: "https://grades.kstacks.org",
   },
   {
     name: "Devs",
@@ -75,6 +82,7 @@ const SERVICES: Array<{
     status: "COMING_SOON",
     url: null,
     sortOrder: 5,
+    healthCheckUrl: null,
   },
   {
     name: "Subjects",
@@ -84,6 +92,7 @@ const SERVICES: Array<{
     status: "COMING_SOON",
     url: null,
     sortOrder: 6,
+    healthCheckUrl: null,
   },
 ];
 
@@ -107,6 +116,8 @@ async function main() {
   for (const service of SERVICES) {
     await prisma.service.upsert({
       where: { codename: service.codename },
+      // Only the public catalogue fields are refreshed; overview, owner and
+      // repo URL are team-authored and must survive re-seeding.
       update: {
         name: service.name,
         tagline: service.tagline,
@@ -118,6 +129,17 @@ async function main() {
       create: service,
     });
   }
+  // healthCheckUrl is deliberately absent from the update block above so the
+  // team's own choice is never clobbered — but fill in the default wherever it
+  // has never been set, including on databases seeded before it existed.
+  for (const service of SERVICES) {
+    if (!service.healthCheckUrl) continue;
+    await prisma.service.updateMany({
+      where: { codename: service.codename, healthCheckUrl: null },
+      data: { healthCheckUrl: service.healthCheckUrl },
+    });
+  }
+
   console.log(`Seeded ${SERVICES.length} KStack services.`);
 }
 

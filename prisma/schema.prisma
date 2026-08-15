@@ -13,10 +13,27 @@ enum Priority {
   HIGH
 }
 
+/// Where a task sits in the team's workflow. "Done" is not a status — finishing
+/// a task archives it (see Task.isArchived), which is never a destructive delete.
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+}
+
 enum ServiceStatus {
   LIVE
   BETA
   COMING_SOON
+}
+
+/// Pipeline states for a student project the team sponsors under "Powered by KStack".
+enum SponsoredProjectStatus {
+  PROPOSED
+  IN_REVIEW
+  ACTIVE
+  LAUNCHED
+  ARCHIVED
 }
 
 model User {
@@ -28,8 +45,11 @@ model User {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  createdTasks  Task[]         @relation("TaskCreator")
-  assignedTasks TaskAssignee[]
+  createdTasks    Task[]        @relation("TaskCreator")
+  assignedTasks   TaskAssignee[]
+  assignedSubtasks Subtask[]    @relation("SubtaskAssignee")
+  comments        TaskComment[]
+  ownedServices   Service[]     @relation("ServiceOwner")
 
   @@map("users")
 }
@@ -43,24 +63,56 @@ model Service {
   status      ServiceStatus @default(LIVE)
   url         String?       @db.VarChar(300)
   sortOrder   Int           @default(0) @map("sort_order")
-  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tasks Task[]
+  /// Team-authored fields. The kstacks.org sync script never overwrites these —
+  /// it only refreshes the public catalogue fields above.
+  overview       String? @db.Text
+  repoUrl        String? @map("repo_url") @db.VarChar(300)
+  healthCheckUrl String? @map("health_check_url") @db.VarChar(300)
 
+  ownerId String? @map("owner_id")
+  owner   User?   @relation("ServiceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tasks        Task[]
+  healthChecks ServiceHealthCheck[]
+
+  @@index([ownerId])
   @@map("services")
 }
 
+/// One recorded probe of a service's health endpoint.
+model ServiceHealthCheck {
+  id             String   @id @default(uuid())
+  serviceId      String   @map("service_id")
+  service        Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  isUp           Boolean  @map("is_up")
+  statusCode     Int?     @map("status_code")
+  responseTimeMs Int?     @map("response_time_ms")
+  error          String?  @db.VarChar(300)
+  checkedAt      DateTime @default(now()) @map("checked_at") @db.Timestamptz(6)
+
+  @@index([serviceId, checkedAt])
+  @@map("service_health_checks")
+}
+
 model Task {
-  id          String    @id @default(uuid())
-  title       String    @db.VarChar(200)
-  description String?   @db.Text
-  deadline    DateTime? @db.Timestamptz(6)
-  priority    Priority  @default(MEDIUM)
-  isArchived  Boolean   @default(false) @map("is_archived")
-  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(6)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id String @id @default(uuid())
+
+  /// Short human reference (rendered as "KS-42") so tasks can be named in chat.
+  reference Int @unique @default(autoincrement())
+
+  title       String     @db.VarChar(200)
+  description String?    @db.Text
+  deadline    DateTime?  @db.Timestamptz(6)
+  priority    Priority   @default(MEDIUM)
+  status      TaskStatus @default(TODO)
+  isArchived  Boolean    @default(false) @map("is_archived")
+  archivedAt  DateTime?  @map("archived_at") @db.Timestamptz(6)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   serviceId String?  @map("service_id")
   service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
@@ -70,11 +122,14 @@ model Task {
 
   assignees TaskAssignee[]
   subtasks  Subtask[]
+  comments  TaskComment[]
+  links     TaskLink[]
 
   @@index([deadline])
   @@index([serviceId])
   @@index([createdById])
   @@index([isArchived])
+  @@index([status])
   @@map("tasks")
 }
 
@@ -97,11 +152,70 @@ model Subtask {
   title       String   @db.VarChar(200)
   isCompleted Boolean  @default(false) @map("is_completed")
   sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// A subtask carries at most one owner, and that person must already be an
+  /// assignee of the parent task. Enforced in the service layer; SetNull here
+  /// only covers the case of the user record itself being removed.
+  assigneeId String? @map("assignee_id")
+  assignee   User?   @relation("SubtaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([taskId])
+  @@index([assigneeId])
   @@map("subtasks")
+}
+
+model TaskComment {
+  id       String @id @default(uuid())
+  taskId   String @map("task_id")
+  task     Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body     String @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([taskId, createdAt])
+  @@index([authorId])
+  @@map("task_comments")
+}
+
+model TaskLink {
+  id     String  @id @default(uuid())
+  taskId String  @map("task_id")
+  task   Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  url    String  @db.VarChar(2000)
+  label  String? @db.VarChar(120)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([taskId])
+  @@map("task_links")
+}
+
+/// A student project the team sponsors with hosting/infrastructure — the
+/// internal counterpart to the public "Powered by KStack" section.
+model SponsoredProject {
+  id          String                 @id @default(uuid())
+  name        String                 @db.VarChar(120)
+  description String                 @db.Text
+  ownerName   String                 @map("owner_name") @db.VarChar(120)
+  contact     String?                @db.VarChar(200)
+  projectUrl  String?                @map("project_url") @db.VarChar(300)
+  repoUrl     String?                @map("repo_url") @db.VarChar(300)
+  status      SponsoredProjectStatus @default(PROPOSED)
+  /// What the team actually provided (hosting, database, domain, support).
+  resources   String?                @db.Text
+  notes       String?                @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@map("sponsored_projects")
 }
 
 /// Backing table for connect-pg-simple's express-session store.
