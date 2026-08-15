@@ -22,8 +22,11 @@ enum TaskStatus {
 }
 
 /// Everyone works with equal permissions; ADMIN additionally manages the roster.
+/// A super admin runs the whole thing: they hold every scope implicitly and are
+/// the only ones who can grant or revoke anyone else's admin. Everyone else is a
+/// MEMBER whose powers come entirely from the scopes granted to them, if any.
 enum UserRole {
-  ADMIN
+  SUPER_ADMIN
   MEMBER
 }
 
@@ -85,6 +88,8 @@ model User {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  adminGrants      AdminGrant[]   @relation("GrantHolder")
+  grantsIssued     AdminGrant[]   @relation("GrantIssuer")
   createdTasks     Task[]         @relation("TaskCreator")
   assignedTasks    TaskAssignee[]
   assignedSubtasks Subtask[]      @relation("SubtaskAssignee")
@@ -359,4 +364,33 @@ model Notification {
 
   @@index([userId, isRead, createdAt])
   @@map("notifications")
+}
+
+/// One admin scope held by one person.
+///
+/// `scope` is either the literal "dashboard" — meaning full powers inside this
+/// app — or a service codename such as "kdevs". A service scope is mostly *not*
+/// about this app at all: it is minted into the shared token so the service
+/// itself can recognise its own admins. The single exception the dashboard
+/// honours is the tasks and issues attached to that service.
+///
+/// Scopes are stored as plain strings rather than a foreign key so a grant can
+/// name "dashboard", and so a grant survives a service being renamed upstream.
+model AdminGrant {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation("GrantHolder", fields: [userId], references: [id], onDelete: Cascade)
+
+  scope String @db.VarChar(50)
+
+  /// Who granted it. Kept for the audit trail; nulled rather than cascading so
+  /// removing an account never erases the record of what it handed out.
+  grantedById String? @map("granted_by_id")
+  grantedBy   User?   @relation("GrantIssuer", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([userId, scope])
+  @@index([scope])
+  @@map("admin_grants")
 }

@@ -49,6 +49,6 @@ export const restore = asyncHandler(async (req, res) => {
 export const remove = asyncHandler(async (req, res) => {
   if (!req.user) throw new UnauthorizedError();
   const { id } = uuidParamSchema.parse(req.params);
-  await taskService.deleteTask(id, req.user.id);
+  await taskService.deleteTask(id, req.user.id, req.grants ?? { isSuperAdmin: false, scopes: [] });
   res.status(204).send();
 });

@@ -20,7 +20,7 @@ describe("team, issues, milestones and notifications", () => {
     const admin = await createTestUser({ mustChangePassword: false });
     createdUserIds.push(admin.user.id);
     adminId = admin.user.id;
-    await prisma.user.update({ where: { id: adminId }, data: { role: "ADMIN" } });
+    await prisma.user.update({ where: { id: adminId }, data: { role: "SUPER_ADMIN" } });
     adminAgent = request.agent(app);
     const adminLogin = await adminAgent
       .post("/api/auth/login")
@@ -169,21 +169,33 @@ describe("team, issues, milestones and notifications", () => {
       await prisma.task.deleteMany({ where: { id: converted.body.issue.convertedTaskId } });
     });
 
-    it("only lets the reporter delete an issue", async () => {
+    it("refuses to let a plain member delete someone else's issue", async () => {
+      const created = await adminAgent
+        .post("/api/issues")
+        .set("x-csrf-token", adminCsrf)
+        .send({ title: "Not yours to delete" });
+
+      const refused = await memberAgent
+        .delete(`/api/issues/${created.body.issue.id}`)
+        .set("x-csrf-token", memberCsrf);
+      expect(refused.status).toBe(403);
+
+      // The reporter still can.
+      await adminAgent
+        .delete(`/api/issues/${created.body.issue.id}`)
+        .set("x-csrf-token", adminCsrf)
+        .expect(204);
+    });
+
+    it("lets a super admin delete an issue they did not report", async () => {
       const created = await memberAgent
         .post("/api/issues")
         .set("x-csrf-token", memberCsrf)
-        .send({ title: "Reporter-only delete" });
-      const issueId = created.body.issue.id;
+        .send({ title: "Cleaned up from above" });
 
-      const refused = await adminAgent
-        .delete(`/api/issues/${issueId}`)
-        .set("x-csrf-token", adminCsrf);
-      expect(refused.status).toBe(403);
-
-      await memberAgent
-        .delete(`/api/issues/${issueId}`)
-        .set("x-csrf-token", memberCsrf)
+      await adminAgent
+        .delete(`/api/issues/${created.body.issue.id}`)
+        .set("x-csrf-token", adminCsrf)
         .expect(204);
     });
 

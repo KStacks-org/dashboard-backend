@@ -1,4 +1,5 @@
 import { ConflictError, ForbiddenError, NotFoundError } from "@/errors/AppError.js";
+import { canManageRecord, type Grants } from "@/lib/authz.js";
 import { prisma } from "@/lib/prisma.js";
 import { notify } from "@/services/notification.service.js";
 import type { CreateTaskInput, UpdateTaskInput } from "@/validation/task.schema.js";
@@ -162,10 +163,19 @@ export async function restoreTask(id: string) {
   });
 }
 
-export async function deleteTask(id: string, requesterId: string) {
-  const task = await prisma.task.findUnique({ where: { id }, select: { createdById: true } });
+export async function deleteTask(id: string, requesterId: string, grants: Grants) {
+  const task = await prisma.task.findUnique({
+    where: { id },
+    select: { createdById: true, service: { select: { codename: true } } },
+  });
   if (!task) throw new NotFoundError("Task not found");
-  if (task.createdById !== requesterId) {
+
+  const allowed = canManageRecord(
+    grants,
+    { authorId: task.createdById, serviceCodename: task.service?.codename ?? null },
+    requesterId,
+  );
+  if (!allowed) {
     throw new ForbiddenError("Only the person who created this task can delete it");
   }
   await prisma.task.delete({ where: { id } });

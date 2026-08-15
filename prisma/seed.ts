@@ -21,7 +21,7 @@ const USERS: Array<{
   username: string;
   email: string;
   displayName: string;
-  role?: "ADMIN" | "MEMBER";
+  role?: "SUPER_ADMIN" | "MEMBER";
   jobTitle?: string;
   responsibilities?: string[];
 }> = [
@@ -48,7 +48,7 @@ const USERS: Array<{
     username: "abdullah.sayrawan",
     email: "aalserawan@stu.kau.edu.sa",
     displayName: "عبدالله السيروان",
-    role: "ADMIN",
+    role: "SUPER_ADMIN",
   },
 ];
 

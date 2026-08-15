@@ -10,14 +10,14 @@ export const createMemberSchema = z.object({
   email: universityEmailSchema,
   displayName: z.string().trim().min(1, "Name is required").max(100),
   jobTitle: z.string().trim().max(120).optional().nullable(),
-  role: z.enum(["ADMIN", "MEMBER"]).default("MEMBER"),
+  role: z.enum(["SUPER_ADMIN", "MEMBER"]).default("MEMBER"),
   responsibilities,
 });
 
 export const updateMemberSchema = z.object({
   displayName: z.string().trim().min(1, "Name is required").max(100).optional(),
   jobTitle: z.string().trim().max(120).optional().nullable(),
-  role: z.enum(["ADMIN", "MEMBER"]).optional(),
+  role: z.enum(["SUPER_ADMIN", "MEMBER"]).optional(),
   responsibilities,
   isActive: z.boolean().optional(),
 });

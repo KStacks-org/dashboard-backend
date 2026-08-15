@@ -1,4 +1,5 @@
 import { ConflictError, ForbiddenError, NotFoundError } from "@/errors/AppError.js";
+import { canManageRecord, type Grants } from "@/lib/authz.js";
 import { prisma } from "@/lib/prisma.js";
 import { notify } from "@/services/notification.service.js";
 import type { CreateIssueInput, UpdateIssueInput } from "@/validation/issue.schema.js";
@@ -89,10 +90,19 @@ export async function updateIssue(id: string, data: UpdateIssueInput, actorId: s
   return issue;
 }
 
-export async function deleteIssue(id: string, requesterId: string) {
-  const issue = await prisma.issue.findUnique({ where: { id }, select: { reportedById: true } });
+export async function deleteIssue(id: string, requesterId: string, grants: Grants) {
+  const issue = await prisma.issue.findUnique({
+    where: { id },
+    select: { reportedById: true, service: { select: { codename: true } } },
+  });
   if (!issue) throw new NotFoundError("Issue not found");
-  if (issue.reportedById !== requesterId) {
+
+  const allowed = canManageRecord(
+    grants,
+    { authorId: issue.reportedById, serviceCodename: issue.service?.codename ?? null },
+    requesterId,
+  );
+  if (!allowed) {
     throw new ForbiddenError("Only the person who reported this issue can delete it");
   }
   await prisma.issue.delete({ where: { id } });

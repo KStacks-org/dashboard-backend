@@ -3,6 +3,7 @@ import express from "express";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { env, isProduction } from "@/config/env.js";
+import * as authController from "@/controllers/auth.controller.js";
 import { logger } from "@/lib/logger.js";
 import { attachUser, blockIfMustChangePassword, requireAuth } from "@/middleware/auth.js";
 import { verifyCsrf } from "@/middleware/csrf.js";
@@ -37,6 +38,10 @@ export function createApp() {
   app.use(attachUser);
 
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
+
+  // Published at the conventional path so a verifying library can find it by
+  // convention. Public and unauthenticated: it carries only the public key.
+  app.get("/.well-known/jwks.json", authController.jwks);
 
   app.use("/api/auth", authRouter);
 

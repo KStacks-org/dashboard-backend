@@ -7,15 +7,24 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
   const userId = req.session.userId;
   if (!userId) return next();
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  // Grants come back with the user rather than in a second round-trip; every
+  // authenticated request needs them to decide what the caller may do.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { adminGrants: { select: { scope: true }, orderBy: { scope: "asc" } } },
+  });
   // Deactivating someone takes effect on their next request, not just at login.
   if (!user || !user.isActive) {
     req.session.userId = undefined;
     return next();
   }
 
-  const { passwordHash: _passwordHash, ...safeUser } = user;
+  const { passwordHash: _passwordHash, adminGrants, ...safeUser } = user;
   req.user = safeUser;
+  req.grants = {
+    isSuperAdmin: user.role === "SUPER_ADMIN",
+    scopes: adminGrants.map((grant) => grant.scope),
+  };
   next();
 }
 

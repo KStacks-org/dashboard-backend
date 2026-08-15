@@ -33,7 +33,11 @@ export const update = asyncHandler(async (req, res) => {
 export const remove = asyncHandler(async (req, res) => {
   if (!req.user) throw new UnauthorizedError();
   const { id } = uuidParamSchema.parse(req.params);
-  await issueService.deleteIssue(id, req.user.id);
+  await issueService.deleteIssue(
+    id,
+    req.user.id,
+    req.grants ?? { isSuperAdmin: false, scopes: [] },
+  );
   res.status(204).send();
 });
 

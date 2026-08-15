@@ -16,6 +16,7 @@ const memberSelect = {
   isActive: true,
   mustChangePassword: true,
   createdAt: true,
+  adminGrants: { select: { scope: true }, orderBy: { scope: "asc" } },
 } as const;
 
 /**
@@ -94,16 +95,17 @@ export async function updateMember(id: string, data: UpdateMemberInput, requeste
   const member = await prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
   if (!member) throw new NotFoundError("Team member not found");
 
-  // Guard against an admin locking everyone out of roster management.
-  const losingAdmin =
-    (data.role !== undefined && data.role !== "ADMIN" && member.role === "ADMIN") ||
-    (data.isActive === false && member.role === "ADMIN");
+  // Guard against the last super admin being demoted or switched off — nobody
+  // could grant roles again, and only a super admin can.
+  const losingSuperAdmin =
+    member.role === "SUPER_ADMIN" &&
+    ((data.role !== undefined && data.role !== "SUPER_ADMIN") || data.isActive === false);
 
-  if (losingAdmin) {
-    const otherAdmins = await prisma.user.count({
-      where: { role: "ADMIN", isActive: true, id: { not: id } },
+  if (losingSuperAdmin) {
+    const others = await prisma.user.count({
+      where: { role: "SUPER_ADMIN", isActive: true, id: { not: id } },
     });
-    if (otherAdmins === 0) throw new BadRequestError("The last admin cannot be removed");
+    if (others === 0) throw new BadRequestError("The last super admin cannot be removed");
   }
 
   if (data.isActive === false && id === requesterId) {
