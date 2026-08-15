@@ -5,18 +5,43 @@ const prisma = new PrismaClient();
 
 const TEMPORARY_PASSWORD = "123456";
 
-// Display names are stored exactly as provided by the team. Usernames are a
-// separate, unambiguous ASCII identifier — this matters because two people
-// share the display name/fragment "ياسر".
-const USERS: Array<{ username: string; displayName: string }> = [
-  { username: "tariq", displayName: "طارق" },
-  { username: "yasser.alawfi", displayName: "ياسر العوفي" },
-  { username: "fawaz.abdullah", displayName: "فواز عبد الله" },
-  { username: "mohammed.khayyat", displayName: "محمد خياط" },
-  { username: "amjad.alqasimi", displayName: "أمجد القاسمي" },
-  { username: "abdulaziz", displayName: "عبد العزيز" },
-  { username: "yasser", displayName: "ياسر" },
-  { username: "abdullah.sayrawan", displayName: "عبدالله السيروان" },
+// THE ROSTER — this list *is* the login allowlist. Nobody outside it can sign
+// in; there is no public sign-up.
+//
+// To authorise someone, put their real university address in `email` here and
+// re-run `pnpm db:seed`. Rows are matched on `username`, so correcting an email
+// updates the existing person rather than creating a second account.
+//
+// Addresses on `pending.invalid` are placeholders for team members whose real
+// address has not been supplied yet. `.invalid` is a reserved TLD (RFC 2606)
+// that can never belong to a real mailbox, so a placeholder can never
+// accidentally let an unrelated KAU student in. Those accounts still work as
+// task assignees — they simply cannot be logged into until the email is filled.
+const USERS: Array<{ username: string; email: string; displayName: string }> = [
+  { username: "tariq", email: "tariq@pending.invalid", displayName: "طارق" },
+  { username: "yasser.alawfi", email: "yasser.alawfi@pending.invalid", displayName: "ياسر العوفي" },
+  {
+    username: "fawaz.abdullah",
+    email: "fawaz.abdullah@pending.invalid",
+    displayName: "فواز عبد الله",
+  },
+  {
+    username: "mohammed.khayyat",
+    email: "mohammed.khayyat@pending.invalid",
+    displayName: "محمد خياط",
+  },
+  {
+    username: "amjad.alqasimi",
+    email: "amjad.alqasimi@pending.invalid",
+    displayName: "أمجد القاسمي",
+  },
+  { username: "abdulaziz", email: "abdulaziz@pending.invalid", displayName: "عبد العزيز" },
+  { username: "yasser", email: "yasser@pending.invalid", displayName: "ياسر" },
+  {
+    username: "abdullah.sayrawan",
+    email: "aalserawan@stu.kau.edu.sa",
+    displayName: "عبدالله السيروان",
+  },
 ];
 
 // Official KStack services, kept in sync with kstacks.org's "Official Stack
@@ -102,16 +127,26 @@ async function main() {
   for (const user of USERS) {
     await prisma.user.upsert({
       where: { username: user.username },
-      update: { displayName: user.displayName },
+      // Email and display name are re-applied so corrections take effect, but
+      // the password is never reset for someone who has already changed theirs.
+      update: { displayName: user.displayName, email: user.email },
       create: {
         username: user.username,
+        email: user.email,
         displayName: user.displayName,
         passwordHash: temporaryPasswordHash,
         mustChangePassword: true,
       },
     });
   }
+  const pending = USERS.filter((u) => u.email.endsWith("@pending.invalid"));
   console.log(`Seeded ${USERS.length} users (temporary password: ${TEMPORARY_PASSWORD}).`);
+  if (pending.length > 0) {
+    console.log(
+      `  ${pending.length} still need a real email before they can sign in: ` +
+        pending.map((u) => u.displayName).join(", "),
+    );
+  }
 
   for (const service of SERVICES) {
     await prisma.service.upsert({

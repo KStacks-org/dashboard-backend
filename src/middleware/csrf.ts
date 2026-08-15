@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { isProduction } from "@/config/env.js";
+import { env, isProduction } from "@/config/env.js";
 import { ForbiddenError } from "@/errors/AppError.js";
 
 const CSRF_COOKIE = "kstacks.csrf";
@@ -15,6 +15,8 @@ export function issueCsrfCookie(req: Request, res: Response) {
     secure: isProduction,
     sameSite: "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
+    // Kept on the same scope as the session cookie so the pair travels together.
+    domain: env.SESSION_COOKIE_DOMAIN,
   });
 }
 

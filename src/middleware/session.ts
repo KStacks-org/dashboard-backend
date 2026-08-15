@@ -25,5 +25,9 @@ export const sessionMiddleware = session({
     secure: isProduction,
     sameSite: "lax",
     maxAge: SESSION_MAX_AGE_MS,
+    // Unset = host-only. Set to ".kstacks.org" in production so the session is
+    // shared across KStack subdomains; note this also means any subdomain can
+    // have the cookie sent to it, so every host under it must stay trusted.
+    domain: env.SESSION_COOKIE_DOMAIN,
   },
 });

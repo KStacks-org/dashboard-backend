@@ -23,7 +23,7 @@ describe("tasks", () => {
     creatorAgent = request.agent(app);
     const creatorLogin = await creatorAgent
       .post("/api/auth/login")
-      .send({ username: creator.user.username, password: creator.tempPassword });
+      .send({ email: creator.user.email, password: creator.tempPassword });
     creatorCsrf = extractCookie(creatorLogin, "kstacks.csrf");
 
     const other = await createTestUser({ mustChangePassword: false });
@@ -31,7 +31,7 @@ describe("tasks", () => {
     otherAgent = request.agent(app);
     const otherLogin = await otherAgent
       .post("/api/auth/login")
-      .send({ username: other.user.username, password: other.tempPassword });
+      .send({ email: other.user.email, password: other.tempPassword });
     otherCsrf = extractCookie(otherLogin, "kstacks.csrf");
 
     const assignee = await createTestUser({ mustChangePassword: false });

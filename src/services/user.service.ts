@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma.js";
 
-const userSelect = { id: true, username: true, displayName: true } as const;
+// `username` is an internal seed key and is never sent to the client; email is
+// what the team recognises each other by, and it disambiguates shared names.
+const userSelect = { id: true, email: true, displayName: true } as const;
 
 export function searchUsers(query: string) {
   if (!query) {
@@ -10,7 +12,7 @@ export function searchUsers(query: string) {
     where: {
       OR: [
         { displayName: { contains: query, mode: "insensitive" } },
-        { username: { contains: query, mode: "insensitive" } },
+        { email: { contains: query, mode: "insensitive" } },
       ],
     },
     select: userSelect,

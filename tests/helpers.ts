@@ -12,6 +12,8 @@ export async function createTestUser(overrides?: { mustChangePassword?: boolean 
   const user = await prisma.user.create({
     data: {
       username: `test.user.${suffix}`,
+      // On the allowed domain so these fixtures can actually sign in.
+      email: `test.user.${suffix}@stu.kau.edu.sa`,
       displayName: `Test User ${suffix}`,
       passwordHash: await hashPassword(tempPassword),
       mustChangePassword: overrides?.mustChangePassword ?? false,

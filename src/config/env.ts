@@ -18,6 +18,24 @@ const envSchema = z.object({
     .default("true")
     .transform((v) => v === "true"),
   HEALTH_CHECK_INTERVAL_MINUTES: z.coerce.number().int().positive().max(1440).default(5),
+
+  // Cookie scope. Leave unset for host-only cookies (required in development —
+  // a browser rejects a ".kstacks.org" cookie served from localhost). Set to
+  // ".kstacks.org" in production to share the session across KStack subdomains.
+  SESSION_COOKIE_DOMAIN: z.string().trim().min(1).optional(),
+
+  // Only addresses on these domains may sign in. Comma-separated.
+  ALLOWED_EMAIL_DOMAINS: z
+    .string()
+    .trim()
+    .default("stu.kau.edu.sa")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((domain) => domain.trim().toLowerCase().replace(/^@/, ""))
+        .filter(Boolean),
+    )
+    .refine((domains) => domains.length > 0, "At least one allowed email domain is required"),
 });
 
 const parsed = envSchema.safeParse(process.env);

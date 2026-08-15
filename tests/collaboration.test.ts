@@ -30,7 +30,7 @@ describe("subtask ownership, comments and links", () => {
     ownerAgent = request.agent(app);
     const ownerLogin = await ownerAgent
       .post("/api/auth/login")
-      .send({ username: owner.user.username, password: owner.tempPassword });
+      .send({ email: owner.user.email, password: owner.tempPassword });
     ownerCsrf = extractCookie(ownerLogin, "kstacks.csrf");
 
     const helper = await createTestUser({ mustChangePassword: false });
@@ -43,7 +43,7 @@ describe("subtask ownership, comments and links", () => {
     otherAgent = request.agent(app);
     const otherLogin = await otherAgent
       .post("/api/auth/login")
-      .send({ username: outsider.user.username, password: outsider.tempPassword });
+      .send({ email: outsider.user.email, password: outsider.tempPassword });
     otherCsrf = extractCookie(otherLogin, "kstacks.csrf");
   });
 
@@ -97,9 +97,7 @@ describe("subtask ownership, comments and links", () => {
       .send({ assigneeIds: [ownerId] });
 
     expect(res.status).toBe(409);
-    expect(res.body.error.details.blockedBy).toEqual([
-      expect.objectContaining({ id: helperId }),
-    ]);
+    expect(res.body.error.details.blockedBy).toEqual([expect.objectContaining({ id: helperId })]);
 
     // The assignee list is untouched by the rejected update.
     const after = await ownerAgent.get(`/api/tasks/${task.id}`);

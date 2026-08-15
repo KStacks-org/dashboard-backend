@@ -18,9 +18,24 @@ const PREFIX = "e2e.";
 const PASSWORD = "123456";
 
 const FIXTURES = [
-  { username: `${PREFIX}rotated`, displayName: "اختبار مُفعَّل", mustChangePassword: false },
-  { username: `${PREFIX}fresh`, displayName: "اختبار جديد", mustChangePassword: true },
-  { username: `${PREFIX}other`, displayName: "اختبار آخر", mustChangePassword: false },
+  {
+    username: `${PREFIX}rotated`,
+    email: `${PREFIX}rotated@stu.kau.edu.sa`,
+    displayName: "اختبار مُفعَّل",
+    mustChangePassword: false,
+  },
+  {
+    username: `${PREFIX}fresh`,
+    email: `${PREFIX}fresh@stu.kau.edu.sa`,
+    displayName: "اختبار جديد",
+    mustChangePassword: true,
+  },
+  {
+    username: `${PREFIX}other`,
+    email: `${PREFIX}other@stu.kau.edu.sa`,
+    displayName: "اختبار آخر",
+    mustChangePassword: false,
+  },
 ] as const;
 
 async function setup() {
@@ -31,6 +46,7 @@ async function setup() {
       where: { username: fixture.username },
       // Re-running resets the account to a known state so reruns are deterministic.
       update: {
+        email: fixture.email,
         displayName: fixture.displayName,
         passwordHash,
         mustChangePassword: fixture.mustChangePassword,

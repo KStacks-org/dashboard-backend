@@ -30,6 +30,17 @@ export class MustChangePasswordError extends AppError {
   }
 }
 
+/**
+ * The address is well-formed and on an allowed domain, but nobody on the roster
+ * uses it. Deliberately distinct from a wrong password so the person is told to
+ * ask for access rather than hunting for a typo in their password.
+ */
+export class EmailNotAllowedError extends AppError {
+  constructor() {
+    super(403, "EMAIL_NOT_ALLOWED", "This email is not authorised to use the dashboard");
+  }
+}
+
 export class ForbiddenError extends AppError {
   constructor(message = "You do not have permission to perform this action") {
     super(403, "FORBIDDEN", message);

@@ -6,8 +6,8 @@ import { destroySession, regenerateSession } from "@/utils/sessionAsync.js";
 import { changePasswordSchema, loginSchema } from "@/validation/auth.schema.js";
 
 export const login = asyncHandler(async (req, res) => {
-  const { username, password } = loginSchema.parse(req.body);
-  const user = await authService.authenticate(username, password);
+  const { email, password } = loginSchema.parse(req.body);
+  const user = await authService.authenticate(email, password);
 
   // Regenerate the session id on privilege change to prevent session fixation.
   await regenerateSession(req);

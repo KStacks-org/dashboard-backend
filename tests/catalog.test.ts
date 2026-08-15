@@ -20,7 +20,7 @@ describe("service catalog and sponsored projects", () => {
     agent = request.agent(app);
     const login = await agent
       .post("/api/auth/login")
-      .send({ username: user.user.username, password: user.tempPassword });
+      .send({ email: user.user.email, password: user.tempPassword });
     csrf = extractCookie(login, "kstacks.csrf");
   });
 
@@ -86,17 +86,14 @@ describe("service catalog and sponsored projects", () => {
   });
 
   it("creates, updates and deletes a sponsored project", async () => {
-    const created = await agent
-      .post("/api/sponsored-projects")
-      .set("x-csrf-token", csrf)
-      .send({
-        name: "Schedly",
-        description: "يولّد كل الجداول الممكنة ويختار الأفضل",
-        ownerName: "ياسر الغامدي",
-        projectUrl: "https://schedly.y-tools.xyz",
-        status: "ACTIVE",
-        resources: "استضافة + نطاق فرعي",
-      });
+    const created = await agent.post("/api/sponsored-projects").set("x-csrf-token", csrf).send({
+      name: "Schedly",
+      description: "يولّد كل الجداول الممكنة ويختار الأفضل",
+      ownerName: "ياسر الغامدي",
+      projectUrl: "https://schedly.y-tools.xyz",
+      status: "ACTIVE",
+      resources: "استضافة + نطاق فرعي",
+    });
 
     expect(created.status).toBe(201);
     const projectId = created.body.project.id;

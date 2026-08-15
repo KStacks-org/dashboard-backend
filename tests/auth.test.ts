@@ -12,23 +12,58 @@ describe("authentication", () => {
     await prisma.$disconnect();
   });
 
-  it("rejects an unknown username", async () => {
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ username: "no-such-user", password: "whatever" });
-    expect(res.status).toBe(401);
-    expect(res.body.error.code).toBe("UNAUTHORIZED");
+  it("refuses an email outside the university domain before it ever hits the database", async () => {
+    for (const email of [
+      "someone@gmail.com",
+      "someone@kau.edu.sa",
+      "someone@stu.kau.edu.sa.evil.com",
+    ]) {
+      const res = await request(app).post("/api/auth/login").send({ email, password: "whatever" });
+      expect(res.status, `expected ${email} to be rejected`).toBe(400);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
+    }
   });
 
-  it("rejects a wrong password for a real user", async () => {
+  it("refuses a malformed email", async () => {
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "not-an-email", password: "whatever" });
+    expect(res.status).toBe(400);
+  });
+
+  it("tells a university email that is not on the roster it is not authorised", async () => {
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "nobody.here@stu.kau.edu.sa", password: "whatever" });
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("EMAIL_NOT_ALLOWED");
+  });
+
+  it("accepts the email case-insensitively", async () => {
+    const { user, tempPassword } = await createTestUser({ mustChangePassword: false });
+    createdUserIds.push(user.id);
+
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email: user.email.toUpperCase(), password: tempPassword });
+    expect(res.status).toBe(200);
+  });
+
+  it("never returns the email allowlist through a user search to an anonymous caller", async () => {
+    await request(app).get("/api/users/search").expect(401);
+  });
+
+  it("rejects a wrong password for a rostered user with a generic message", async () => {
     const { user, tempPassword } = await createTestUser();
     createdUserIds.push(user.id);
     void tempPassword;
 
     const res = await request(app)
       .post("/api/auth/login")
-      .send({ username: user.username, password: "definitely-wrong" });
+      .send({ email: user.email, password: "definitely-wrong" });
     expect(res.status).toBe(401);
+    // Distinct from EMAIL_NOT_ALLOWED: the address is fine, the password is not.
+    expect(res.body.error.code).toBe("UNAUTHORIZED");
   });
 
   it("logs a seeded-style user in with the temporary password and flags mustChangePassword", async () => {
@@ -37,7 +72,7 @@ describe("authentication", () => {
 
     const res = await request(app)
       .post("/api/auth/login")
-      .send({ username: user.username, password: tempPassword });
+      .send({ email: user.email, password: tempPassword });
     expect(res.status).toBe(200);
     expect(res.body.user.mustChangePassword).toBe(true);
     expect(res.body.user.passwordHash).toBeUndefined();
@@ -55,7 +90,7 @@ describe("authentication", () => {
 
     const loginRes = await agent
       .post("/api/auth/login")
-      .send({ username: user.username, password: tempPassword });
+      .send({ email: user.email, password: tempPassword });
     const csrfToken = extractCookie(loginRes, "kstacks.csrf");
 
     const blockedRes = await agent.get("/api/tasks");
@@ -79,13 +114,13 @@ describe("authentication", () => {
     // The old temporary password must stop working immediately.
     const oldLoginRes = await request(app)
       .post("/api/auth/login")
-      .send({ username: user.username, password: tempPassword });
+      .send({ email: user.email, password: tempPassword });
     expect(oldLoginRes.status).toBe(401);
 
     // The new password works.
     const newLoginRes = await request(app)
       .post("/api/auth/login")
-      .send({ username: user.username, password: "NewPass123" });
+      .send({ email: user.email, password: "NewPass123" });
     expect(newLoginRes.status).toBe(200);
   });
 
@@ -96,7 +131,7 @@ describe("authentication", () => {
 
     const loginRes = await agent
       .post("/api/auth/login")
-      .send({ username: user.username, password: tempPassword });
+      .send({ email: user.email, password: tempPassword });
     const csrfToken = extractCookie(loginRes, "kstacks.csrf");
 
     const res = await agent.post("/api/auth/change-password").set("x-csrf-token", csrfToken).send({
@@ -114,7 +149,7 @@ describe("authentication", () => {
 
     const loginRes = await agent
       .post("/api/auth/login")
-      .send({ username: user.username, password: tempPassword });
+      .send({ email: user.email, password: tempPassword });
     const csrfToken = extractCookie(loginRes, "kstacks.csrf");
 
     const meBefore = await agent.get("/api/auth/me");
@@ -131,7 +166,7 @@ describe("authentication", () => {
     createdUserIds.push(user.id);
     const agent = request.agent(app);
 
-    await agent.post("/api/auth/login").send({ username: user.username, password: tempPassword });
+    await agent.post("/api/auth/login").send({ email: user.email, password: tempPassword });
 
     const res = await agent
       .post("/api/auth/change-password")

@@ -1,13 +1,18 @@
-import { BadRequestError, UnauthorizedError } from "@/errors/AppError.js";
+import { BadRequestError, EmailNotAllowedError, UnauthorizedError } from "@/errors/AppError.js";
 import { prisma } from "@/lib/prisma.js";
 import { hashPassword, verifyPassword } from "@/utils/password.js";
 
-export async function authenticate(username: string, password: string) {
-  const user = await prisma.user.findUnique({ where: { username } });
-  if (!user) throw new UnauthorizedError("Invalid username or password");
+/**
+ * There is no public sign-up, so the users table is the allowlist: an address
+ * nobody on the roster owns is refused outright, while a known address with the
+ * wrong password gets the usual generic message.
+ */
+export async function authenticate(email: string, password: string) {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new EmailNotAllowedError();
 
   const valid = await verifyPassword(user.passwordHash, password);
-  if (!valid) throw new UnauthorizedError("Invalid username or password");
+  if (!valid) throw new UnauthorizedError("Invalid email or password");
 
   const { passwordHash: _passwordHash, ...safeUser } = user;
   return safeUser;
