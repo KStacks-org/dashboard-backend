@@ -13,6 +13,10 @@ const envSchema = z
     // for automated test runs, never on the real server.
     LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
     LOGIN_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
+    // Throttling for the public "report a problem" endpoints — same override
+    // rule as the login limits above: raised only for automated test runs.
+    SUPPORT_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
+    SUPPORT_CREATE_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(5),
     // Background probing of service health URLs.
     HEALTH_CHECK_ENABLED: z
       .enum(["true", "false"])
@@ -36,6 +40,22 @@ const envSchema = z
     // a browser rejects a ".kstacks.org" cookie served from localhost). Set to
     // ".kstacks.org" in production to share the session across KStack subdomains.
     SESSION_COOKIE_DOMAIN: z.string().trim().min(1).optional(),
+
+    // Origins allowed to call the public "report a problem" endpoints — the
+    // KStack service sites the embeddable widget runs on. Separate from
+    // FRONTEND_URL above, which is this dashboard's own origin and covers
+    // only the session-authenticated API. Comma-separated; empty means no
+    // outside site can reach the widget endpoints yet.
+    SUPPORT_WIDGET_ORIGINS: z
+      .string()
+      .trim()
+      .default("")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((origin) => origin.trim())
+          .filter(Boolean),
+      ),
 
     // Only addresses on these domains may sign in. Comma-separated.
     ALLOWED_EMAIL_DOMAINS: z

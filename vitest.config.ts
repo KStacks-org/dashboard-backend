@@ -13,6 +13,8 @@ export default defineConfig({
       // The suite signs in many times from one address on purpose; the strict
       // production default would throttle it. Only the test run is relaxed.
       LOGIN_RATE_LIMIT_MAX: "1000",
+      SUPPORT_RATE_LIMIT_MAX: "1000",
+      SUPPORT_CREATE_RATE_LIMIT_MAX: "1000",
     },
   },
   resolve: {

@@ -100,6 +100,9 @@ model User {
   notifications    Notification[] @relation("NotificationRecipient")
   triggered        Notification[] @relation("NotificationActor")
 
+  supportMessages            SupportMessage[]      @relation("SupportMessageAuthor")
+  closedSupportConversations SupportConversation[] @relation("SupportConversationCloser")
+
   @@index([isActive])
   @@map("users")
 }
@@ -393,4 +396,75 @@ model AdminGrant {
   @@unique([userId, scope])
   @@index([scope])
   @@map("admin_grants")
+}
+
+enum SupportConversationStatus {
+  OPEN
+  CLOSED
+}
+
+/// A problem report thread, opened from a KStack service's embedded widget by
+/// someone with no account here — there is no login on their side. `token` is
+/// their entire identity in this system: it is what proves the thread is
+/// theirs when they come back, and (once outbound email exists) it is what a
+/// reply notification would link to.
+model SupportConversation {
+  id     String                    @id @default(uuid())
+  token  String                    @unique @default(uuid())
+  status SupportConversationStatus @default(OPEN)
+
+  /// The service the report came from, as a plain string like AdminGrant.scope
+  /// rather than a foreign key — a report should never be blocked by, or lost
+  /// to, that service being renamed or not yet existing in the catalogue.
+  serviceCodename String @map("service_codename") @db.VarChar(50)
+
+  /// Best-effort context the widget captured about where the visitor was
+  /// (path, plus whatever they typed) — free text, never parsed.
+  pageContext String? @map("page_context") @db.VarChar(300)
+
+  reporterName  String @map("reporter_name") @db.VarChar(100)
+  reporterEmail String @map("reporter_email") @db.VarChar(200)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  closedAt  DateTime? @map("closed_at") @db.Timestamptz(6)
+
+  closedById String? @map("closed_by_id")
+  closedBy   User?   @relation("SupportConversationCloser", fields: [closedById], references: [id], onDelete: SetNull)
+
+  messages SupportMessage[]
+
+  @@index([status, updatedAt])
+  @@index([serviceCodename])
+  @@map("support_conversations")
+}
+
+enum SupportSenderType {
+  REPORTER
+  STAFF
+}
+
+/// One message in a report thread. The reporter always sends as themselves;
+/// staff choose per message whether to send under their own name or "KStack".
+model SupportMessage {
+  id             String              @id @default(uuid())
+  conversationId String              @map("conversation_id")
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderType SupportSenderType @map("sender_type")
+
+  /// Set only when senderType is STAFF; null for the reporter's own messages.
+  staffId String? @map("staff_id")
+  staff   User?   @relation("SupportMessageAuthor", fields: [staffId], references: [id], onDelete: SetNull)
+
+  /// Only meaningful when senderType is STAFF: shows "KStack" instead of the
+  /// staff member's own name, for a reply meant to read as an official answer.
+  asOrg Boolean @default(false) @map("as_org")
+
+  body String @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([conversationId, createdAt])
+  @@map("support_messages")
 }
