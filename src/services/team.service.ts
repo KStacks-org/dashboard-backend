@@ -3,7 +3,12 @@ import { prisma } from "@/lib/prisma.js";
 import { hashPassword } from "@/utils/password.js";
 import type { CreateMemberInput, UpdateMemberInput } from "@/validation/team.schema.js";
 
-/** Same temporary password as the seed; the member must replace it on first login. */
+/**
+ * Vestigial: sign-in now goes through auth-service, not a local password, so
+ * this value is never used to authenticate anyone. It exists only because
+ * the `password_hash` column is still NOT NULL — dropping it (and
+ * `must_change_password`) is a separate migration, not done here.
+ */
 const TEMPORARY_PASSWORD = "123456";
 
 const memberSelect = {
@@ -14,7 +19,6 @@ const memberSelect = {
   jobTitle: true,
   responsibilities: true,
   isActive: true,
-  mustChangePassword: true,
   createdAt: true,
   adminGrants: { select: { scope: true }, orderBy: { scope: "asc" } },
 } as const;

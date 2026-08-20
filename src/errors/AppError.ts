@@ -36,8 +36,13 @@ export class MustChangePasswordError extends AppError {
  * ask for access rather than hunting for a typo in their password.
  */
 export class EmailNotAllowedError extends AppError {
-  constructor() {
-    super(403, "EMAIL_NOT_ALLOWED", "This email is not authorised to use the dashboard");
+  constructor(email?: string) {
+    super(
+      403,
+      "EMAIL_NOT_ALLOWED",
+      "This email is not authorised to use the dashboard",
+      email ? { email } : undefined,
+    );
   }
 }
 

@@ -1,33 +1,14 @@
-import { ForbiddenError, UnauthorizedError } from "@/errors/AppError.js";
-import { loadGrants } from "@/lib/authz.js";
+import { env, isProduction } from "@/config/env.js";
+import { EmailNotAllowedError, UnauthorizedError } from "@/errors/AppError.js";
 import { issueServiceToken, publicJwks } from "@/lib/jwt.js";
-import { issueCsrfCookie } from "@/middleware/csrf.js";
-import * as authService from "@/services/auth.service.js";
 import { asyncHandler } from "@/utils/asyncHandler.js";
-import { destroySession, regenerateSession } from "@/utils/sessionAsync.js";
-import { changePasswordSchema, loginSchema } from "@/validation/auth.schema.js";
 
-export const login = asyncHandler(async (req, res) => {
-  const { email, password } = loginSchema.parse(req.body);
-  const user = await authService.authenticate(email, password);
-
-  // Regenerate the session id on privilege change to prevent session fixation.
-  await regenerateSession(req);
-  req.session.userId = user.id;
-  issueCsrfCookie(req, res);
-
-  const grants = await loadGrants(user.id, user.role);
-  res.json({ user: { ...user, adminScopes: grants.scopes } });
-});
-
-export const logout = asyncHandler(async (req, res) => {
-  await destroySession(req);
-  res.clearCookie("kstacks.sid");
-  res.clearCookie("kstacks.csrf");
-  res.status(204).send();
-});
+const IDENTITY_COOKIES = ["access_token", "refresh_token"] as const;
 
 export const me = asyncHandler(async (req, res) => {
+  // auth-service confirmed who they are, but this app's roster doesn't (or
+  // no longer does) — a different situation from never having signed in.
+  if (req.deniedIdentity) throw new EmailNotAllowedError(req.deniedIdentity.email);
   if (!req.user) throw new UnauthorizedError();
   // Scopes travel with the user so the UI can decide what to offer without a
   // second request. They describe authority, never grant it — every rule is
@@ -35,24 +16,31 @@ export const me = asyncHandler(async (req, res) => {
   res.json({ user: { ...req.user, adminScopes: req.grants?.scopes ?? [] } });
 });
 
-export const changePassword = asyncHandler(async (req, res) => {
-  if (!req.user) throw new UnauthorizedError();
-  const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
-  const user = await authService.changePassword(req.user.id, currentPassword, newPassword);
-  res.json({ user });
+/**
+ * Clears this app's view of the auth-service identity cookies. Works
+ * regardless of roster status — someone denied access still needs a way to
+ * sign out and try a different account. Does not call auth-service's own
+ * /auth/logout; it only forgets the cookies on this side.
+ */
+export const logout = asyncHandler(async (_req, res) => {
+  for (const name of IDENTITY_COOKIES) {
+    res.clearCookie(name, {
+      httpOnly: true,
+      secure: isProduction,
+      domain: env.COOKIE_DOMAIN,
+      path: "/",
+    });
+  }
+  res.clearCookie("kstacks.csrf", { domain: env.COOKIE_DOMAIN, path: "/" });
+  res.status(204).send();
 });
 
 /**
  * Mints the token the other KStack services read. Scoped to the caller's own
- * session — there is no way to ask for a token on someone else's behalf — and
- * refused while a temporary password is still in place, so an unclaimed account
- * can never hand out authority.
+ * identity — there is no way to ask for a token on someone else's behalf.
  */
 export const serviceToken = asyncHandler(async (req, res) => {
   if (!req.user || !req.grants) throw new UnauthorizedError();
-  if (req.user.mustChangePassword) {
-    throw new ForbiddenError("Change your password before requesting a service token");
-  }
 
   const { token, expiresInSeconds } = await issueServiceToken(req.user, req.grants);
   // Authority, not a cacheable document.

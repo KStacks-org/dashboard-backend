@@ -1,3 +1,4 @@
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
@@ -5,12 +6,11 @@ import { pinoHttp } from "pino-http";
 import { env, isProduction } from "@/config/env.js";
 import * as authController from "@/controllers/auth.controller.js";
 import { logger } from "@/lib/logger.js";
-import { attachUser, blockIfMustChangePassword, requireAuth } from "@/middleware/auth.js";
+import { attachUser, requireAuth } from "@/middleware/auth.js";
 import { verifyCsrf } from "@/middleware/csrf.js";
 import { errorHandler, notFoundHandler } from "@/middleware/errorHandler.js";
 import { publicSupportCors } from "@/middleware/publicCors.js";
 import { apiRateLimiter } from "@/middleware/rateLimiters.js";
-import { sessionMiddleware } from "@/middleware/session.js";
 import { authRouter } from "@/routes/auth.routes.js";
 import { commentRouter } from "@/routes/comment.routes.js";
 import { issueRouter } from "@/routes/issue.routes.js";
@@ -35,7 +35,7 @@ export function createApp() {
   app.use(express.json({ limit: "1mb" }));
   app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/health" } }));
 
-  app.use(sessionMiddleware);
+  app.use(cookieParser());
   app.use(attachUser);
 
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
@@ -44,7 +44,7 @@ export function createApp() {
   // convention. Public and unauthenticated: it carries only the public key.
   app.get("/.well-known/jwks.json", authController.jwks);
 
-  // The one policy every session-backed route shares: a single trusted
+  // The one policy every cookie-authenticated route shares: a single trusted
   // origin, cookies included. Scoped to just these two mounts rather than
   // applied blanket — a blanket `app.use(cors(...))` would answer every
   // route's CORS preflight, including the public support router below, whose
@@ -58,13 +58,7 @@ export function createApp() {
   app.use("/api/auth", dashboardCors, authRouter);
 
   const protectedRouter = express.Router();
-  protectedRouter.use(
-    dashboardCors,
-    apiRateLimiter,
-    requireAuth,
-    blockIfMustChangePassword,
-    verifyCsrf,
-  );
+  protectedRouter.use(dashboardCors, apiRateLimiter, requireAuth, verifyCsrf);
   protectedRouter.use("/services", serviceRouter);
   protectedRouter.use("/users", userRouter);
   protectedRouter.use("/tasks", taskRouter);

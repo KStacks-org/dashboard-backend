@@ -8,11 +8,6 @@ const envSchema = z
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     APP_URL: z.string().url("APP_URL must be a valid URL"),
     FRONTEND_URL: z.string().url("FRONTEND_URL must be a valid URL"),
-    SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters long"),
-    // Login throttling. Defaults are the production-safe values; raise the max only
-    // for automated test runs, never on the real server.
-    LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
-    LOGIN_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
     // Throttling for the public "report a problem" endpoints — same override
     // rule as the login limits above: raised only for automated test runs.
     SUPPORT_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
@@ -36,10 +31,13 @@ const envSchema = z
       .url("SERVICE_CATALOG_URL must be a valid URL")
       .default("https://kstacks.org/"),
 
-    // Cookie scope. Leave unset for host-only cookies (required in development —
-    // a browser rejects a ".kstacks.org" cookie served from localhost). Set to
-    // ".kstacks.org" in production to share the session across KStack subdomains.
-    SESSION_COOKIE_DOMAIN: z.string().trim().min(1).optional(),
+    // Cookie scope for the CSRF cookie, and for clearing auth-service's
+    // access_token/refresh_token cookies on logout. Leave unset for host-only
+    // cookies (required in development — a browser rejects a ".kstacks.org"
+    // cookie served from localhost). Set to ".kstacks.org" in production —
+    // the same domain auth-service itself uses — so these line up with the
+    // identity cookies it sets.
+    COOKIE_DOMAIN: z.string().trim().min(1).optional(),
 
     // Origins allowed to call the public "report a problem" endpoints — the
     // KStack service sites the embeddable widget runs on. Separate from
@@ -87,6 +85,17 @@ const envSchema = z
     // Short-lived by design: the token carries authority, and revoking a scope
     // should take effect quickly. Consumers re-fetch rather than cache it long.
     JWT_TTL_MINUTES: z.coerce.number().int().positive().max(1440).default(15),
+
+    // The KStacks-wide identity service the dashboard's own login is
+    // migrating onto. Only used to verify tokens it issues — the dashboard
+    // never holds its signing key, only the public half at this JWKS URL.
+    // Both default to the real production values, so nothing to set until a
+    // local/staging auth-service is stood up separately.
+    AUTH_SERVICE_JWKS_URL: z
+      .string()
+      .url("AUTH_SERVICE_JWKS_URL must be a valid URL")
+      .default("https://api.kstacks.org/auth/.well-known/jwks.json"),
+    AUTH_SERVICE_JWT_ISSUER: z.string().trim().min(1).default("kstack"),
   })
   .refine((config) => config.NODE_ENV !== "production" || Boolean(config.JWT_PRIVATE_KEY), {
     path: ["JWT_PRIVATE_KEY"],

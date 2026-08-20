@@ -1,45 +1,50 @@
 import type { NextFunction, Request, Response } from "express";
-import { MustChangePasswordError, UnauthorizedError } from "@/errors/AppError.js";
+import { UnauthorizedError } from "@/errors/AppError.js";
+import { verifyAuthServiceToken } from "@/lib/authServiceJwt.js";
+import { loadGrants } from "@/lib/authz.js";
 import { prisma } from "@/lib/prisma.js";
+import { ensureCsrfCookie } from "@/middleware/csrf.js";
 
-/** Loads the current user onto req.user if a session exists; never rejects. */
-export async function attachUser(req: Request, _res: Response, next: NextFunction) {
-  const userId = req.session.userId;
-  if (!userId) return next();
+const ACCESS_TOKEN_COOKIE = "access_token";
 
-  // Grants come back with the user rather than in a second round-trip; every
-  // authenticated request needs them to decide what the caller may do.
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { adminGrants: { select: { scope: true }, orderBy: { scope: "asc" } } },
-  });
-  // Deactivating someone takes effect on their next request, not just at login.
+/**
+ * Loads the current user onto req.user if auth-service's access_token cookie
+ * verifies and the address is on this app's roster; never rejects.
+ *
+ * Two different "not signed in" outcomes are possible, and callers need to
+ * tell them apart: no cookie, or one that fails verification, leaves
+ * req.user unset with nothing else recorded — go through the auth-service
+ * login. A *valid* token for an address this roster doesn't recognise (or
+ * has deactivated) sets req.deniedIdentity instead — auth-service already
+ * vouches for who they are, so sending them back through its login again
+ * would just recognise them and bounce them right back here.
+ */
+export async function attachUser(req: Request, res: Response, next: NextFunction) {
+  const token = req.cookies?.[ACCESS_TOKEN_COOKIE];
+  if (!token) return next();
+
+  const identity = await verifyAuthServiceToken(token).catch(() => null);
+  if (!identity) return next();
+
+  const user = await prisma.user.findUnique({ where: { email: identity.email } });
   if (!user || !user.isActive) {
-    req.session.userId = undefined;
+    req.deniedIdentity = { email: identity.email, name: identity.name };
     return next();
   }
 
-  const { passwordHash: _passwordHash, adminGrants, ...safeUser } = user;
+  const {
+    passwordHash: _passwordHash,
+    mustChangePassword: _mustChangePassword,
+    ...safeUser
+  } = user;
   req.user = safeUser;
-  req.grants = {
-    isSuperAdmin: user.role === "SUPER_ADMIN",
-    scopes: adminGrants.map((grant) => grant.scope),
-  };
+  req.grants = await loadGrants(user.id, user.role);
+  ensureCsrfCookie(req, res);
   next();
 }
 
 /** Rejects unauthenticated requests. Must run after attachUser. */
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   if (!req.user) return next(new UnauthorizedError());
-  next();
-}
-
-/**
- * Blocks access to normal app routes until the user has replaced their
- * temporary password. Auth routes (logout, change-password, me) must stay
- * reachable and mount this middleware separately/after those routes.
- */
-export function blockIfMustChangePassword(req: Request, _res: Response, next: NextFunction) {
-  if (req.user?.mustChangePassword) return next(new MustChangePasswordError());
   next();
 }
