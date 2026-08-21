@@ -96,6 +96,12 @@ const envSchema = z
       .url("AUTH_SERVICE_JWKS_URL must be a valid URL")
       .default("https://api.kstacks.org/auth/.well-known/jwks.json"),
     AUTH_SERVICE_JWT_ISSUER: z.string().trim().min(1).default("kstack"),
+
+    // Directory of pre-built static files to serve alongside the API: the
+    // compiled frontend. Set in the Docker image, where one container serves
+    // both. Left unset in development, where Vite serves the frontend and
+    // proxies /api here — unset means this app serves the API only.
+    STATIC_ROOT: z.string().trim().min(1).optional(),
   })
   .refine((config) => config.NODE_ENV !== "production" || Boolean(config.JWT_PRIVATE_KEY), {
     path: ["JWT_PRIVATE_KEY"],

@@ -11,6 +11,7 @@ import { verifyCsrf } from "@/middleware/csrf.js";
 import { errorHandler, notFoundHandler } from "@/middleware/errorHandler.js";
 import { publicSupportCors } from "@/middleware/publicCors.js";
 import { apiRateLimiter } from "@/middleware/rateLimiters.js";
+import { staticSiteRouter } from "@/middleware/staticSite.js";
 import { authRouter } from "@/routes/auth.routes.js";
 import { commentRouter } from "@/routes/comment.routes.js";
 import { issueRouter } from "@/routes/issue.routes.js";
@@ -31,7 +32,18 @@ export function createApp() {
 
   if (isProduction) app.set("trust proxy", 1);
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      // Service logos are captured from kstacks.org by the catalogue sync and
+      // rendered straight from their remote URLs, which helmet's default
+      // img-src ("'self' data:") would block. Everything else keeps the
+      // default policy — notably script-src stays "'self'".
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: { "img-src": ["'self'", "data:", "https:"] },
+      },
+    }),
+  );
   app.use(express.json({ limit: "1mb" }));
   app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/health" } }));
 
@@ -74,6 +86,10 @@ export function createApp() {
   protectedRouter.use("/github", githubRouter);
   protectedRouter.use("/support", supportRouter);
   app.use("/api", protectedRouter);
+
+  // Last, so every API route above wins over a same-named static file, and
+  // only requests nothing else claimed fall through to the app shell.
+  if (env.STATIC_ROOT) app.use(staticSiteRouter(env.STATIC_ROOT));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

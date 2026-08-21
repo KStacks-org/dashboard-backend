@@ -14,7 +14,7 @@ declare global {
        * don't have access" page instead of back into the login redirect,
        * which would just loop (auth-service keeps recognising them).
        */
-      deniedIdentity?: { email: string; name: string };
+      deniedIdentity?: { email: string };
     }
   }
 }

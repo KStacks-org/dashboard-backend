@@ -31,7 +31,7 @@ export async function attachUser(req: Request, res: Response, next: NextFunction
   const email = identity.email.toLowerCase();
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.isActive) {
-    req.deniedIdentity = { email, name: identity.name };
+    req.deniedIdentity = { email };
     return next();
   }
 

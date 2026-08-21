@@ -25,8 +25,14 @@ export type AuthServiceUser = {
   name: string;
   email: string;
   /**
-   * Empty until auth-service's flags system ships. No claim means no
-   * authority — never treat a missing claim as "trust by default".
+   * Authorisation flags carried by the token. Always empty today: the flags
+   * system exists in auth-service only as an unmerged PR, so no token in
+   * circulation carries the claim yet. Parsed anyway so the values flow
+   * through untouched the moment that ships — the one to check for is
+   * "super-admin" (auth-service's own `Flag.SUPER_ADMIN` constant).
+   *
+   * A missing claim yields an empty list, never a default-allow: no claim
+   * means no authority.
    */
   flags: string[];
 };
@@ -59,9 +65,4 @@ export async function verifyAuthServiceToken(token: string): Promise<AuthService
     if (err instanceof UnauthorizedError) throw err;
     throw new UnauthorizedError("Invalid or expired token");
   }
-}
-
-/** `"super-admin"` is auth-service's own constant (`Flag.SUPER_ADMIN`) — kept as one literal here rather than duplicated at each call site. */
-export function isSuperAdmin(user: AuthServiceUser): boolean {
-  return user.flags.includes("super-admin");
 }
