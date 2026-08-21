@@ -1,8 +1,13 @@
-import request from "supertest";
+import type request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma.js";
-import { app, cleanupService, cleanupUser, createTestService, createTestUser } from "./helpers.js";
-import { extractCookie } from "./testUtils.js";
+import {
+  cleanupService,
+  cleanupUser,
+  createTestService,
+  createTestUser,
+  signInTestUser,
+} from "./helpers.js";
 
 describe("tasks", () => {
   const createdUserIds: string[] = [];
@@ -17,26 +22,18 @@ describe("tasks", () => {
   beforeAll(async () => {
     service = await createTestService();
 
-    const creator = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(creator.user.id);
-    creatorId = creator.user.id;
-    creatorAgent = request.agent(app);
-    const creatorLogin = await creatorAgent
-      .post("/api/auth/login")
-      .send({ email: creator.user.email, password: creator.tempPassword });
-    creatorCsrf = extractCookie(creatorLogin, "kstacks.csrf");
+    const creator = await createTestUser();
+    createdUserIds.push(creator.id);
+    creatorId = creator.id;
+    ({ agent: creatorAgent, csrf: creatorCsrf } = await signInTestUser(creator));
 
-    const other = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(other.user.id);
-    otherAgent = request.agent(app);
-    const otherLogin = await otherAgent
-      .post("/api/auth/login")
-      .send({ email: other.user.email, password: other.tempPassword });
-    otherCsrf = extractCookie(otherLogin, "kstacks.csrf");
+    const other = await createTestUser();
+    createdUserIds.push(other.id);
+    ({ agent: otherAgent, csrf: otherCsrf } = await signInTestUser(other));
 
-    const assignee = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(assignee.user.id);
-    assigneeId = assignee.user.id;
+    const assignee = await createTestUser();
+    createdUserIds.push(assignee.id);
+    assigneeId = assignee.id;
   });
 
   afterAll(async () => {

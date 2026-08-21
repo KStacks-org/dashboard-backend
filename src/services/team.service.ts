@@ -1,15 +1,6 @@
 import { BadRequestError, ConflictError, NotFoundError } from "@/errors/AppError.js";
 import { prisma } from "@/lib/prisma.js";
-import { hashPassword } from "@/utils/password.js";
 import type { CreateMemberInput, UpdateMemberInput } from "@/validation/team.schema.js";
-
-/**
- * Vestigial: sign-in now goes through auth-service, not a local password, so
- * this value is never used to authenticate anyone. It exists only because
- * the `password_hash` column is still NOT NULL — dropping it (and
- * `must_change_password`) is a separate migration, not done here.
- */
-const TEMPORARY_PASSWORD = "123456";
 
 const memberSelect = {
   id: true,
@@ -88,8 +79,6 @@ export async function createMember(data: CreateMemberInput) {
       jobTitle: data.jobTitle ?? null,
       role: data.role,
       responsibilities: data.responsibilities ?? [],
-      passwordHash: await hashPassword(TEMPORARY_PASSWORD),
-      mustChangePassword: true,
     },
     select: memberSelect,
   });

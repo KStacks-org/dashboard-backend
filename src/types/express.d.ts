@@ -4,7 +4,7 @@ import type { User } from "@prisma/client";
 declare global {
   namespace Express {
     interface Request {
-      user?: Omit<User, "passwordHash" | "mustChangePassword">;
+      user?: User;
       /** Admin scopes held by req.user, loaded alongside them. */
       grants?: Grants;
       /**

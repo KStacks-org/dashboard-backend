@@ -3,8 +3,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { env } from "@/config/env.js";
 import { prisma } from "@/lib/prisma.js";
-import { app, cleanupUser, createTestUser } from "./helpers.js";
-import { extractCookie } from "./testUtils.js";
+import { app, cleanupUser, createTestUser, signInTestUser } from "./helpers.js";
 
 /**
  * Scoped admin. A super admin holds everything and is the only one who can hand
@@ -29,16 +28,13 @@ describe("scoped admin roles", () => {
   }
 
   async function signIn(key: string, opts: { role?: "SUPER_ADMIN" | "MEMBER" } = {}) {
-    const created = await createTestUser({ mustChangePassword: false });
-    userIds.push(created.user.id);
+    const user = await createTestUser();
+    userIds.push(user.id);
     if (opts.role === "SUPER_ADMIN") {
-      await prisma.user.update({ where: { id: created.user.id }, data: { role: "SUPER_ADMIN" } });
+      await prisma.user.update({ where: { id: user.id }, data: { role: "SUPER_ADMIN" } });
     }
-    const agent = request.agent(app);
-    const login = await agent
-      .post("/api/auth/login")
-      .send({ email: created.user.email, password: created.tempPassword });
-    agents[key] = { agent, csrf: extractCookie(login, "kstacks.csrf"), id: created.user.id };
+    const { agent, csrf, id } = await signInTestUser(user);
+    agents[key] = { agent, csrf, id };
   }
 
   beforeAll(async () => {
@@ -214,18 +210,6 @@ describe("scoped admin roles", () => {
 
     it("refuses a token to someone who is not signed in", async () => {
       await request(app).get("/api/auth/token").expect(401);
-    });
-
-    it("refuses a token while a temporary password is still in place", async () => {
-      const fresh = await createTestUser({ mustChangePassword: true });
-      userIds.push(fresh.user.id);
-      const agent = request.agent(app);
-      await agent
-        .post("/api/auth/login")
-        .send({ email: fresh.user.email, password: fresh.tempPassword });
-
-      const res = await agent.get("/api/auth/token");
-      expect(res.status).toBe(403);
     });
   });
 });

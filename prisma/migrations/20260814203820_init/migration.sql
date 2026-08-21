@@ -9,8 +9,6 @@ CREATE TABLE "users" (
     "id" TEXT NOT NULL,
     "username" VARCHAR(50) NOT NULL,
     "display_name" VARCHAR(100) NOT NULL,
-    "password_hash" TEXT NOT NULL,
-    "must_change_password" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
@@ -72,15 +70,6 @@ CREATE TABLE "subtasks" (
     CONSTRAINT "subtasks_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "session" (
-    "sid" VARCHAR NOT NULL,
-    "sess" JSONB NOT NULL,
-    "expire" TIMESTAMP(6) NOT NULL,
-
-    CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
-);
-
 -- CreateIndex
 CREATE UNIQUE INDEX "users_username_key" ON "users"("username");
 
@@ -104,9 +93,6 @@ CREATE INDEX "task_assignees_user_id_idx" ON "task_assignees"("user_id");
 
 -- CreateIndex
 CREATE INDEX "subtasks_task_id_idx" ON "subtasks"("task_id");
-
--- CreateIndex
-CREATE INDEX "IDX_session_expire" ON "session"("expire");
 
 -- AddForeignKey
 ALTER TABLE "tasks" ADD CONSTRAINT "tasks_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES "services"("id") ON DELETE SET NULL ON UPDATE CASCADE;

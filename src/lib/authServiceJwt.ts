@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, type JWTVerifyGetKey, jwtVerify } from "jose";
 import { env } from "@/config/env.js";
 import { UnauthorizedError } from "@/errors/AppError.js";
 
@@ -9,7 +9,16 @@ import { UnauthorizedError } from "@/errors/AppError.js";
  * endpoint and cached/rotated automatically by `jose` — no shared secret
  * with that service, and nothing here can mint a token, only check one.
  */
-const authServiceJwks = createRemoteJWKSet(new URL(env.AUTH_SERVICE_JWKS_URL));
+let authServiceJwks: JWTVerifyGetKey = createRemoteJWKSet(new URL(env.AUTH_SERVICE_JWKS_URL));
+
+/**
+ * Test-only seam: swaps in a locally-signed key set so tests can verify
+ * self-issued tokens without a network call to the real auth-service JWKS.
+ * Never called outside test setup.
+ */
+export function __setAuthServiceJwksForTests(jwks: JWTVerifyGetKey) {
+  authServiceJwks = jwks;
+}
 
 export type AuthServiceUser = {
   id: string;

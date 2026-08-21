@@ -1,8 +1,14 @@
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma.js";
-import { app, cleanupUser, createTestUser } from "./helpers.js";
-import { extractCookie } from "./testUtils.js";
+import {
+  app,
+  cleanupUser,
+  createTestUser,
+  signInTestUser,
+  signTestAccessToken,
+} from "./helpers.js";
 
 describe("authentication", () => {
   const createdUserIds: string[] = [];
@@ -12,170 +18,108 @@ describe("authentication", () => {
     await prisma.$disconnect();
   });
 
-  it("refuses an email outside the university domain before it ever hits the database", async () => {
-    for (const email of [
-      "someone@gmail.com",
-      "someone@kau.edu.sa",
-      "someone@stu.kau.edu.sa.evil.com",
-    ]) {
-      const res = await request(app).post("/api/auth/login").send({ email, password: "whatever" });
-      expect(res.status, `expected ${email} to be rejected`).toBe(400);
-      expect(res.body.error.code).toBe("VALIDATION_ERROR");
-    }
-  });
-
-  it("refuses a malformed email", async () => {
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ email: "not-an-email", password: "whatever" });
-    expect(res.status).toBe(400);
-  });
-
-  it("tells a university email that is not on the roster it is not authorised", async () => {
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ email: "nobody.here@stu.kau.edu.sa", password: "whatever" });
-    expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe("EMAIL_NOT_ALLOWED");
-  });
-
-  it("accepts the email case-insensitively", async () => {
-    const { user, tempPassword } = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(user.id);
-
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ email: user.email.toUpperCase(), password: tempPassword });
-    expect(res.status).toBe(200);
-  });
-
-  it("never returns the email allowlist through a user search to an anonymous caller", async () => {
-    await request(app).get("/api/users/search").expect(401);
-  });
-
-  it("rejects a wrong password for a rostered user with a generic message", async () => {
-    const { user, tempPassword } = await createTestUser();
-    createdUserIds.push(user.id);
-    void tempPassword;
-
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ email: user.email, password: "definitely-wrong" });
+  it("treats no access_token cookie at all as anonymous", async () => {
+    const res = await request(app).get("/api/auth/me");
     expect(res.status).toBe(401);
-    // Distinct from EMAIL_NOT_ALLOWED: the address is fine, the password is not.
+  });
+
+  it("treats a garbled token the same as no token — not a roster rejection", async () => {
+    const res = await request(app).get("/api/auth/me").set("Cookie", "access_token=not-a-jwt");
+    expect(res.status).toBe(401);
     expect(res.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("logs a seeded-style user in with the temporary password and flags mustChangePassword", async () => {
-    const { user, tempPassword } = await createTestUser({ mustChangePassword: true });
-    createdUserIds.push(user.id);
-
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ email: user.email, password: tempPassword });
-    expect(res.status).toBe(200);
-    expect(res.body.user.mustChangePassword).toBe(true);
-    expect(res.body.user.passwordHash).toBeUndefined();
-  });
-
-  it("rejects protected API calls without a session", async () => {
+  it("rejects protected API calls with no identity", async () => {
     const res = await request(app).get("/api/tasks");
     expect(res.status).toBe(401);
   });
 
-  it("blocks normal API access until the forced password change is completed, then unblocks it", async () => {
-    const { user, tempPassword } = await createTestUser({ mustChangePassword: true });
-    createdUserIds.push(user.id);
-    const agent = request.agent(app);
-
-    const loginRes = await agent
-      .post("/api/auth/login")
-      .send({ email: user.email, password: tempPassword });
-    const csrfToken = extractCookie(loginRes, "kstacks.csrf");
-
-    const blockedRes = await agent.get("/api/tasks");
-    expect(blockedRes.status).toBe(403);
-    expect(blockedRes.body.error.code).toBe("MUST_CHANGE_PASSWORD");
-
-    const changeRes = await agent
-      .post("/api/auth/change-password")
-      .set("x-csrf-token", csrfToken)
-      .send({
-        currentPassword: tempPassword,
-        newPassword: "NewPass123",
-        confirmNewPassword: "NewPass123",
-      });
-    expect(changeRes.status).toBe(200);
-    expect(changeRes.body.user.mustChangePassword).toBe(false);
-
-    const unblockedRes = await agent.get("/api/tasks");
-    expect(unblockedRes.status).toBe(200);
-
-    // The old temporary password must stop working immediately.
-    const oldLoginRes = await request(app)
-      .post("/api/auth/login")
-      .send({ email: user.email, password: tempPassword });
-    expect(oldLoginRes.status).toBe(401);
-
-    // The new password works.
-    const newLoginRes = await request(app)
-      .post("/api/auth/login")
-      .send({ email: user.email, password: "NewPass123" });
-    expect(newLoginRes.status).toBe(200);
-  });
-
-  it("rejects a change-password request whose confirmation does not match", async () => {
-    const { user, tempPassword } = await createTestUser({ mustChangePassword: true });
-    createdUserIds.push(user.id);
-    const agent = request.agent(app);
-
-    const loginRes = await agent
-      .post("/api/auth/login")
-      .send({ email: user.email, password: tempPassword });
-    const csrfToken = extractCookie(loginRes, "kstacks.csrf");
-
-    const res = await agent.post("/api/auth/change-password").set("x-csrf-token", csrfToken).send({
-      currentPassword: tempPassword,
-      newPassword: "NewPass123",
-      confirmNewPassword: "Different123",
+  it("tells a valid, auth-service-verified identity that isn't on the roster it has no access — distinct from never having signed in", async () => {
+    const token = await signTestAccessToken({
+      id: randomUUID(),
+      email: "nobody.here@stu.kau.edu.sa",
+      displayName: "Nobody Here",
     });
-    expect(res.status).toBe(400);
+    const res = await request(app).get("/api/auth/me").set("Cookie", `access_token=${token}`);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("EMAIL_NOT_ALLOWED");
+    expect(res.body.error.details.email).toBe("nobody.here@stu.kau.edu.sa");
   });
 
-  it("invalidates the session on logout", async () => {
-    const { user, tempPassword } = await createTestUser({ mustChangePassword: false });
+  it("denies a deactivated roster member exactly like one who was never on it", async () => {
+    const user = await createTestUser({ isActive: false });
     createdUserIds.push(user.id);
-    const agent = request.agent(app);
 
-    const loginRes = await agent
-      .post("/api/auth/login")
-      .send({ email: user.email, password: tempPassword });
-    const csrfToken = extractCookie(loginRes, "kstacks.csrf");
-
-    const meBefore = await agent.get("/api/auth/me");
-    expect(meBefore.status).toBe(200);
-
-    await agent.post("/api/auth/logout").set("x-csrf-token", csrfToken).expect(204);
-
-    const meAfter = await agent.get("/api/auth/me");
-    expect(meAfter.status).toBe(401);
+    const token = await signTestAccessToken(user);
+    const res = await request(app).get("/api/auth/me").set("Cookie", `access_token=${token}`);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("EMAIL_NOT_ALLOWED");
   });
 
-  it("rejects a mutating request with a missing/invalid CSRF token", async () => {
-    const { user, tempPassword } = await createTestUser({ mustChangePassword: false });
+  it("matches the roster email case-insensitively", async () => {
+    const user = await createTestUser();
     createdUserIds.push(user.id);
-    const agent = request.agent(app);
 
-    await agent.post("/api/auth/login").send({ email: user.email, password: tempPassword });
+    const token = await signTestAccessToken({ ...user, email: user.email.toUpperCase() });
+    const res = await request(app).get("/api/auth/me").set("Cookie", `access_token=${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.user.id).toBe(user.id);
+  });
+
+  it("signs a rostered, active user in and never leaks the password hash", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const { agent } = await signInTestUser(user);
+
+    const res = await agent.get("/api/auth/me");
+    expect(res.status).toBe(200);
+    expect(res.body.user.email).toBe(user.email);
+    expect(res.body.user.passwordHash).toBeUndefined();
+  });
+
+  it("clears the identity cookies on logout, so the same agent goes back to anonymous", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const { agent, csrf } = await signInTestUser(user);
+
+    await agent.get("/api/auth/me").expect(200);
+    await agent.post("/api/auth/logout").set("x-csrf-token", csrf).expect(204);
+
+    const after = await agent.get("/api/auth/me");
+    expect(after.status).toBe(401);
+  });
+
+  it("lets a denied identity log out too, so they can try a different account", async () => {
+    const token = await signTestAccessToken({
+      id: randomUUID(),
+      email: "still.nobody@stu.kau.edu.sa",
+      displayName: "Still Nobody",
+    });
+    await request(app).post("/api/auth/logout").set("Cookie", `access_token=${token}`).expect(204);
+  });
+
+  it("rejects a mutating request with a missing or invalid CSRF token", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const { agent } = await signInTestUser(user);
 
     const res = await agent
-      .post("/api/auth/change-password")
+      .post("/api/tasks")
       .set("x-csrf-token", "bogus-token")
-      .send({
-        currentPassword: tempPassword,
-        newPassword: "NewPass123",
-        confirmNewPassword: "NewPass123",
-      });
+      .send({ title: "Should be rejected", assigneeIds: [user.id] });
     expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("accepts a mutating request whose CSRF header matches its cookie", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const { agent, csrf } = await signInTestUser(user);
+
+    const res = await agent
+      .post("/api/tasks")
+      .set("x-csrf-token", csrf)
+      .send({ title: "Should be accepted", assigneeIds: [user.id] });
+    expect(res.status).toBe(201);
   });
 });

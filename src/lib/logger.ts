@@ -7,14 +7,7 @@ export const logger = pino({
     ? undefined
     : { target: "pino-pretty", options: { colorize: true, translateTime: "HH:MM:ss" } },
   redact: {
-    paths: [
-      "req.headers.cookie",
-      "req.headers.authorization",
-      "*.password",
-      "*.passwordHash",
-      "*.currentPassword",
-      "*.newPassword",
-    ],
+    paths: ["req.headers.cookie", "req.headers.authorization"],
     censor: "[redacted]",
   },
 });

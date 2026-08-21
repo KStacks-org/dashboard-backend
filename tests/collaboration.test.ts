@@ -1,8 +1,7 @@
-import request from "supertest";
+import type request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma.js";
-import { app, cleanupUser, createTestUser } from "./helpers.js";
-import { extractCookie } from "./testUtils.js";
+import { cleanupUser, createTestUser, signInTestUser } from "./helpers.js";
 
 describe("subtask ownership, comments and links", () => {
   const createdUserIds: string[] = [];
@@ -24,27 +23,19 @@ describe("subtask ownership, comments and links", () => {
   };
 
   beforeAll(async () => {
-    const owner = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(owner.user.id);
-    ownerId = owner.user.id;
-    ownerAgent = request.agent(app);
-    const ownerLogin = await ownerAgent
-      .post("/api/auth/login")
-      .send({ email: owner.user.email, password: owner.tempPassword });
-    ownerCsrf = extractCookie(ownerLogin, "kstacks.csrf");
+    const owner = await createTestUser();
+    createdUserIds.push(owner.id);
+    ownerId = owner.id;
+    ({ agent: ownerAgent, csrf: ownerCsrf } = await signInTestUser(owner));
 
-    const helper = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(helper.user.id);
-    helperId = helper.user.id;
+    const helper = await createTestUser();
+    createdUserIds.push(helper.id);
+    helperId = helper.id;
 
-    const outsider = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(outsider.user.id);
-    outsiderId = outsider.user.id;
-    otherAgent = request.agent(app);
-    const otherLogin = await otherAgent
-      .post("/api/auth/login")
-      .send({ email: outsider.user.email, password: outsider.tempPassword });
-    otherCsrf = extractCookie(otherLogin, "kstacks.csrf");
+    const outsider = await createTestUser();
+    createdUserIds.push(outsider.id);
+    outsiderId = outsider.id;
+    ({ agent: otherAgent, csrf: otherCsrf } = await signInTestUser(outsider));
   });
 
   afterAll(async () => {

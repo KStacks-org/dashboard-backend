@@ -82,11 +82,9 @@ model User {
 
   /// Soft-off switch: a removed member keeps their authored history but can no
   /// longer sign in or be assigned new work.
-  isActive           Boolean  @default(true) @map("is_active")
-  passwordHash       String   @map("password_hash")
-  mustChangePassword Boolean  @default(true) @map("must_change_password")
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   adminGrants      AdminGrant[]   @relation("GrantHolder")
   grantsIssued     AdminGrant[]   @relation("GrantIssuer")
@@ -282,16 +280,6 @@ model SponsoredProject {
 
   @@index([status])
   @@map("sponsored_projects")
-}
-
-/// Backing table for connect-pg-simple's express-session store.
-model Session {
-  sid    String   @id @db.VarChar
-  sess   Json
-  expire DateTime @db.Timestamp(6)
-
-  @@index([expire], map: "IDX_session_expire")
-  @@map("session")
 }
 
 /// A dated goal that tasks roll up into, e.g. "Portal MVP".

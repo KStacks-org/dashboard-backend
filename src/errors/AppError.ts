@@ -24,12 +24,6 @@ export class UnauthorizedError extends AppError {
   }
 }
 
-export class MustChangePasswordError extends AppError {
-  constructor() {
-    super(403, "MUST_CHANGE_PASSWORD", "You must change your temporary password before continuing");
-  }
-}
-
 /**
  * The address is well-formed and on an allowed domain, but nobody on the roster
  * uses it. Deliberately distinct from a wrong password so the person is told to

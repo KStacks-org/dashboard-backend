@@ -26,18 +26,16 @@ export async function attachUser(req: Request, res: Response, next: NextFunction
   const identity = await verifyAuthServiceToken(token).catch(() => null);
   if (!identity) return next();
 
-  const user = await prisma.user.findUnique({ where: { email: identity.email } });
+  // The roster stores addresses lowercased (see universityEmailSchema); match
+  // the same way rather than trusting auth-service's casing to already agree.
+  const email = identity.email.toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.isActive) {
-    req.deniedIdentity = { email: identity.email, name: identity.name };
+    req.deniedIdentity = { email, name: identity.name };
     return next();
   }
 
-  const {
-    passwordHash: _passwordHash,
-    mustChangePassword: _mustChangePassword,
-    ...safeUser
-  } = user;
-  req.user = safeUser;
+  req.user = user;
   req.grants = await loadGrants(user.id, user.role);
   ensureCsrfCookie(req, res);
   next();

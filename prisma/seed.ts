@@ -1,9 +1,6 @@
 import { PrismaClient } from "@prisma/client";
-import { hashPassword } from "../src/utils/password.js";
 
 const prisma = new PrismaClient();
-
-const TEMPORARY_PASSWORD = "123456";
 
 // THE ROSTER — this list *is* the login allowlist. Nobody outside it can sign
 // in; there is no public sign-up.
@@ -130,13 +127,10 @@ const SERVICES: Array<{
 ];
 
 async function main() {
-  const temporaryPasswordHash = await hashPassword(TEMPORARY_PASSWORD);
-
   for (const user of USERS) {
     await prisma.user.upsert({
       where: { username: user.username },
-      // Email and display name are re-applied so corrections take effect, but
-      // the password is never reset for someone who has already changed theirs.
+      // Email and display name are re-applied so corrections take effect.
       update: {
         displayName: user.displayName,
         email: user.email,
@@ -151,13 +145,11 @@ async function main() {
         role: user.role ?? "MEMBER",
         jobTitle: user.jobTitle ?? null,
         responsibilities: user.responsibilities ?? [],
-        passwordHash: temporaryPasswordHash,
-        mustChangePassword: true,
       },
     });
   }
   const pending = USERS.filter((u) => u.email.endsWith("@pending.invalid"));
-  console.log(`Seeded ${USERS.length} users (temporary password: ${TEMPORARY_PASSWORD}).`);
+  console.log(`Seeded ${USERS.length} users.`);
   if (pending.length > 0) {
     console.log(
       `  ${pending.length} still need a real email before they can sign in: ` +

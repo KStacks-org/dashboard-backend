@@ -1,8 +1,7 @@
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma.js";
-import { app, cleanupUser, createTestUser } from "./helpers.js";
-import { extractCookie } from "./testUtils.js";
+import { app, cleanupUser, createTestUser, signInTestUser } from "./helpers.js";
 
 describe("support conversations", () => {
   const createdUserIds: string[] = [];
@@ -26,13 +25,9 @@ describe("support conversations", () => {
   };
 
   beforeAll(async () => {
-    const staff = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(staff.user.id);
-    staffAgent = request.agent(app);
-    const login = await staffAgent
-      .post("/api/auth/login")
-      .send({ email: staff.user.email, password: staff.tempPassword });
-    staffCsrf = extractCookie(login, "kstacks.csrf");
+    const staff = await createTestUser();
+    createdUserIds.push(staff.id);
+    ({ agent: staffAgent, csrf: staffCsrf } = await signInTestUser(staff));
   });
 
   afterAll(async () => {

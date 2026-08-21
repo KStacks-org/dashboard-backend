@@ -1,8 +1,7 @@
-import request from "supertest";
+import type request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma.js";
-import { app, cleanupUser, createTestUser } from "./helpers.js";
-import { extractCookie } from "./testUtils.js";
+import { cleanupUser, createTestUser, signInTestUser } from "./helpers.js";
 
 describe("team, issues, milestones and notifications", () => {
   const createdUserIds: string[] = [];
@@ -17,24 +16,16 @@ describe("team, issues, milestones and notifications", () => {
   let memberId: string;
 
   beforeAll(async () => {
-    const admin = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(admin.user.id);
-    adminId = admin.user.id;
+    const admin = await createTestUser();
+    createdUserIds.push(admin.id);
+    adminId = admin.id;
     await prisma.user.update({ where: { id: adminId }, data: { role: "SUPER_ADMIN" } });
-    adminAgent = request.agent(app);
-    const adminLogin = await adminAgent
-      .post("/api/auth/login")
-      .send({ email: admin.user.email, password: admin.tempPassword });
-    adminCsrf = extractCookie(adminLogin, "kstacks.csrf");
+    ({ agent: adminAgent, csrf: adminCsrf } = await signInTestUser(admin));
 
-    const member = await createTestUser({ mustChangePassword: false });
-    createdUserIds.push(member.user.id);
-    memberId = member.user.id;
-    memberAgent = request.agent(app);
-    const memberLogin = await memberAgent
-      .post("/api/auth/login")
-      .send({ email: member.user.email, password: member.tempPassword });
-    memberCsrf = extractCookie(memberLogin, "kstacks.csrf");
+    const member = await createTestUser();
+    createdUserIds.push(member.id);
+    memberId = member.id;
+    ({ agent: memberAgent, csrf: memberCsrf } = await signInTestUser(member));
   });
 
   afterAll(async () => {
@@ -83,8 +74,6 @@ describe("team, issues, milestones and notifications", () => {
       createdUserIds.push(created.body.member.id);
 
       expect(created.body.member.responsibilities).toEqual(["Index Service"]);
-      // New members start on the temporary password and must replace it.
-      expect(created.body.member.mustChangePassword).toBe(true);
     });
 
     it("rejects a member whose email is off the university domain", async () => {
@@ -104,24 +93,22 @@ describe("team, issues, milestones and notifications", () => {
       expect(res.status).toBe(409);
     });
 
-    it("deactivates a member, which immediately blocks their sign-in", async () => {
-      const victim = await createTestUser({ mustChangePassword: false });
-      createdUserIds.push(victim.user.id);
-
-      await request(app)
-        .post("/api/auth/login")
-        .send({ email: victim.user.email, password: victim.tempPassword })
-        .expect(200);
+    it("deactivates a member, which immediately blocks their access — even with their still-valid token", async () => {
+      const victim = await createTestUser();
+      createdUserIds.push(victim.id);
+      const { agent: victimAgent } = await signInTestUser(victim);
+      await victimAgent.get("/api/auth/me").expect(200);
 
       await adminAgent
-        .patch(`/api/team/${victim.user.id}`)
+        .patch(`/api/team/${victim.id}`)
         .set("x-csrf-token", adminCsrf)
         .send({ isActive: false })
         .expect(200);
 
-      const after = await request(app)
-        .post("/api/auth/login")
-        .send({ email: victim.user.email, password: victim.tempPassword });
+      // The token itself is untouched and still cryptographically valid —
+      // deactivation takes effect because the roster lookup happens fresh on
+      // every request, not because anything about the token changed.
+      const after = await victimAgent.get("/api/auth/me");
       expect(after.status).toBe(403);
       expect(after.body.error.code).toBe("EMAIL_NOT_ALLOWED");
     });
