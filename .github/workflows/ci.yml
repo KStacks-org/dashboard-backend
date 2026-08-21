@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - prod
+      - dev
+  pull_request:
+    branches:
+      - prod
+      - dev
+
+jobs:
+  quality:
+    name: Lint, typecheck and test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kstack_dashboard_test
+        ports:
+          - 5432:5432
+        # The job must not start querying before the server accepts connections.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kstack_dashboard_test?schema=public
+      APP_URL: http://localhost:4100
+      FRONTEND_URL: http://localhost:5173
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Version comes from package.json#packageManager.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Apply migrations
+        run: pnpm db:migrate:deploy
+
+      # The suite asserts against the real service catalogue (task and issue
+      # scopes are validated against it), so an empty database would fail.
+      - name: Seed the database
+        run: pnpm db:seed
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test

@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.env
+.env.local
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma
+prisma/dev.db
+
+# Testing
+coverage/
+
+# TypeScript incremental build info
+*.tsbuildinfo

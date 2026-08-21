@@ -1,7 +1,11 @@
 {
-  "name": "backend",
+  "name": "kstacks-dashboard-backend",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
@@ -20,6 +24,13 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

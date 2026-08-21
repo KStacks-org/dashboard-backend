@@ -6,8 +6,8 @@
  * The parsing and writing live in src/lib/catalogSync.ts — both paths run the
  * same code, so a fix here can never drift from what the server does.
  *
- *   pnpm --filter backend db:sync-services            # apply changes
- *   pnpm --filter backend db:sync-services --dry-run  # preview only
+ *   pnpm db:sync-services            # apply changes
+ *   pnpm db:sync-services --dry-run  # preview only
  */
 import { env } from "@/config/env.js";
 import { fetchCatalog, writeCatalog } from "@/lib/catalogSync.js";

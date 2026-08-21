@@ -11,8 +11,8 @@
  * whichever email a fixture was created with (see frontend/e2e/testAuth.ts)
  * and land straight in as that person, no login form involved.
  *
- *   pnpm --filter backend exec tsx scripts/e2e-fixtures.ts setup
- *   pnpm --filter backend exec tsx scripts/e2e-fixtures.ts teardown
+ *   pnpm exec tsx scripts/e2e-fixtures.ts setup
+ *   pnpm exec tsx scripts/e2e-fixtures.ts teardown
  */
 import { PrismaClient } from "@prisma/client";
 
