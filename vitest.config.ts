@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    // Stands a super admin up for the run and removes it afterwards, so the
+    // first-sign-in bootstrap never fires by accident. See tests/globalSetup.ts.
+    globalSetup: ["./tests/globalSetup.ts"],
     testTimeout: 15000,
     hookTimeout: 20000,
     fileParallelism: false,

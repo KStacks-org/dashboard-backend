@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { UnauthorizedError } from "@/errors/AppError.js";
 import { verifyAuthServiceToken } from "@/lib/authServiceJwt.js";
 import { loadGrants } from "@/lib/authz.js";
+import { claimUnownedDashboard } from "@/lib/bootstrap.js";
 import { prisma } from "@/lib/prisma.js";
 import { ensureCsrfCookie } from "@/middleware/csrf.js";
 
@@ -18,6 +19,10 @@ const ACCESS_TOKEN_COOKIE = "access_token";
  * has deactivated) sets req.deniedIdentity instead — auth-service already
  * vouches for who they are, so sending them back through its login again
  * would just recognise them and bounce them right back here.
+ *
+ * The one exception is a dashboard that has no super admin yet, where this is
+ * also the moment the very first account is created. That path is narrow and
+ * fires at most once; claimUnownedDashboard spells out the conditions.
  */
 export async function attachUser(req: Request, res: Response, next: NextFunction) {
   const token = req.cookies?.[ACCESS_TOKEN_COOKIE];
@@ -29,7 +34,16 @@ export async function attachUser(req: Request, res: Response, next: NextFunction
   // The roster stores addresses lowercased (see universityEmailSchema); match
   // the same way rather than trusting auth-service's casing to already agree.
   const email = identity.email.toLowerCase();
-  const user = await prisma.user.findUnique({ where: { email } });
+  let user = await prisma.user.findUnique({ where: { email } });
+
+  // Before anyone holds the keys, signing in is what hands them over — see
+  // claimUnownedDashboard, which decides whether this is that moment. Skipped
+  // once we are looking at a super admin, since then the dashboard plainly has
+  // an owner already.
+  if (user?.role !== "SUPER_ADMIN") {
+    user = (await claimUnownedDashboard(identity)) ?? user;
+  }
+
   if (!user || !user.isActive) {
     req.deniedIdentity = { email };
     return next();

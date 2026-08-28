@@ -68,6 +68,21 @@ const envSchema = z
       )
       .refine((domains) => domains.length > 0, "At least one allowed email domain is required"),
 
+    // Optional lock on the one-time bootstrap described in src/lib/bootstrap.ts.
+    // Leave it unset and the first eligible person to sign in claims the empty
+    // dashboard as its super admin. Set it to one address and only that address
+    // can make the claim — worth doing if the site is reachable before the team
+    // has actually signed in, since every allowed domain has thousands of
+    // eligible mailboxes behind it. Either way it applies only while no super
+    // admin exists; afterwards the value is inert.
+    BOOTSTRAP_ADMIN_EMAIL: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .min(1)
+      .optional()
+      .transform((value) => value || undefined),
+
     // GitHub activity feed. Works unauthenticated at 60 requests/hour, which one
     // refresh nearly exhausts — a read-only token raises it to 5000.
     GITHUB_ORG: z.string().trim().min(1).default("KStacks-org"),

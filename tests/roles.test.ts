@@ -82,6 +82,55 @@ describe("scoped admin roles", () => {
       expect(res.status).toBe(403);
     });
 
+    it("refuses to let a dashboard admin promote anyone — themselves least of all", async () => {
+      const res = await as("dashboardAdmin")
+        .agent.patch(`/api/team/${as("dashboardAdmin").id}`)
+        .set("x-csrf-token", as("dashboardAdmin").csrf)
+        .send({ role: "SUPER_ADMIN" });
+      expect(res.status).toBe(403);
+
+      const unchanged = await prisma.user.findUniqueOrThrow({
+        where: { id: as("dashboardAdmin").id },
+      });
+      expect(unchanged.role).toBe("MEMBER");
+    });
+
+    it("refuses the same thing on the way in, when adding a brand-new member", async () => {
+      const res = await as("dashboardAdmin")
+        .agent.post("/api/team")
+        .set("x-csrf-token", as("dashboardAdmin").csrf)
+        .send({
+          email: `smuggled.in.${Date.now()}@stu.kau.edu.sa`,
+          displayName: "Smuggled In",
+          role: "SUPER_ADMIN",
+        });
+      expect(res.status).toBe(403);
+    });
+
+    it("still lets a dashboard admin edit someone while echoing their role back unchanged", async () => {
+      await as("dashboardAdmin")
+        .agent.patch(`/api/team/${as("member").id}`)
+        .set("x-csrf-token", as("dashboardAdmin").csrf)
+        .send({ role: "MEMBER", jobTitle: "Role left exactly as it was" })
+        .expect(200);
+    });
+
+    it("lets a super admin promote and demote", async () => {
+      const promoted = await as("super")
+        .agent.patch(`/api/team/${as("member").id}`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ role: "SUPER_ADMIN" })
+        .expect(200);
+      expect(promoted.body.member.role).toBe("SUPER_ADMIN");
+
+      const demoted = await as("super")
+        .agent.patch(`/api/team/${as("member").id}`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ role: "MEMBER" })
+        .expect(200);
+      expect(demoted.body.member.role).toBe("MEMBER");
+    });
+
     it("lets a super admin grant a service scope", async () => {
       const res = await as("super")
         .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)

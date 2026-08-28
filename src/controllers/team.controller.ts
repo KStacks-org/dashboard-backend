@@ -10,15 +10,22 @@ export const list = asyncHandler(async (_req, res) => {
 });
 
 export const create = asyncHandler(async (req, res) => {
+  if (!req.user || !req.grants) throw new UnauthorizedError();
   const data = createMemberSchema.parse(req.body);
-  const member = await teamService.createMember(data);
+  const member = await teamService.createMember(data, {
+    id: req.user.id,
+    isSuperAdmin: req.grants.isSuperAdmin,
+  });
   res.status(201).json({ member });
 });
 
 export const update = asyncHandler(async (req, res) => {
-  if (!req.user) throw new UnauthorizedError();
+  if (!req.user || !req.grants) throw new UnauthorizedError();
   const { id } = uuidParamSchema.parse(req.params);
   const data = updateMemberSchema.parse(req.body);
-  const member = await teamService.updateMember(id, data, req.user.id);
+  const member = await teamService.updateMember(id, data, {
+    id: req.user.id,
+    isSuperAdmin: req.grants.isSuperAdmin,
+  });
   res.json({ member });
 });

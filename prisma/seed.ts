@@ -9,6 +9,12 @@ const prisma = new PrismaClient();
 // re-run `pnpm db:seed`. Rows are matched on `username`, so correcting an email
 // updates the existing person rather than creating a second account.
 //
+// Nobody is seeded as a super admin, and re-seeding never changes anyone's
+// role — that would undo decisions made in the app. A brand-new database has
+// no super admin at all until the first person signs in, which is what makes
+// them one; see src/lib/bootstrap.ts. After that, roles and scopes are handed
+// out from the Team page.
+//
 // Addresses on `pending.invalid` are placeholders for team members whose real
 // address has not been supplied yet. `.invalid` is a reserved TLD (RFC 2606)
 // that can never belong to a real mailbox, so a placeholder can never
@@ -18,7 +24,6 @@ const USERS: Array<{
   username: string;
   email: string;
   displayName: string;
-  role?: "SUPER_ADMIN" | "MEMBER";
   jobTitle?: string;
   responsibilities?: string[];
 }> = [
@@ -45,7 +50,6 @@ const USERS: Array<{
     username: "abdullah.sayrawan",
     email: "aalserawan@stu.kau.edu.sa",
     displayName: "عبدالله السيروان",
-    role: "SUPER_ADMIN",
   },
 ];
 
@@ -131,10 +135,11 @@ async function main() {
     await prisma.user.upsert({
       where: { username: user.username },
       // Email and display name are re-applied so corrections take effect.
+      // `role` is deliberately absent: whoever holds what is decided in the
+      // app, and a re-seed must not quietly demote the super admin.
       update: {
         displayName: user.displayName,
         email: user.email,
-        role: user.role ?? "MEMBER",
         ...(user.jobTitle !== undefined && { jobTitle: user.jobTitle }),
         ...(user.responsibilities !== undefined && { responsibilities: user.responsibilities }),
       },
@@ -142,7 +147,6 @@ async function main() {
         username: user.username,
         email: user.email,
         displayName: user.displayName,
-        role: user.role ?? "MEMBER",
         jobTitle: user.jobTitle ?? null,
         responsibilities: user.responsibilities ?? [],
       },
@@ -155,6 +159,11 @@ async function main() {
       `  ${pending.length} still need a real email before they can sign in: ` +
         pending.map((u) => u.displayName).join(", "),
     );
+  }
+
+  const superAdmins = await prisma.user.count({ where: { role: "SUPER_ADMIN", isActive: true } });
+  if (superAdmins === 0) {
+    console.log("  No super admin yet — the first person to sign in becomes one.");
   }
 
   for (const service of SERVICES) {

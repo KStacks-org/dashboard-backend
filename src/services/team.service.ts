@@ -1,5 +1,11 @@
-import { BadRequestError, ConflictError, NotFoundError } from "@/errors/AppError.js";
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from "@/errors/AppError.js";
 import { prisma } from "@/lib/prisma.js";
+import { deriveUsername } from "@/lib/username.js";
 import type { CreateMemberInput, UpdateMemberInput } from "@/validation/team.schema.js";
 
 const memberSelect = {
@@ -13,6 +19,9 @@ const memberSelect = {
   createdAt: true,
   adminGrants: { select: { scope: true }, orderBy: { scope: "asc" } },
 } as const;
+
+/** Who is asking, for the rules that turn on being a super admin specifically. */
+type Requester = { id: string; isSuperAdmin: boolean };
 
 /**
  * The roster with each person's live workload, so the page answers "who is
@@ -59,22 +68,23 @@ export async function listTeam() {
   });
 }
 
-export async function createMember(data: CreateMemberInput) {
+/**
+ * Adding someone needs the dashboard scope (the route enforces that); adding
+ * them *as a super admin* is a different thing entirely and needs to come from
+ * one, which is why the requester is passed in rather than assumed.
+ */
+export async function createMember(data: CreateMemberInput, requester: Requester) {
+  if (data.role === "SUPER_ADMIN" && !requester.isSuperAdmin) {
+    throw new ForbiddenError("Only a super admin can appoint another super admin");
+  }
+
   const existing = await prisma.user.findUnique({ where: { email: data.email } });
   if (existing) throw new ConflictError("Someone with that email is already on the team");
-
-  // A readable, collision-free internal key derived from the address.
-  const base = data.email.split("@")[0]?.replace(/[^a-z0-9._-]/gi, "") || "member";
-  let username = base.slice(0, 40);
-  let attempt = 1;
-  while (await prisma.user.findUnique({ where: { username }, select: { id: true } })) {
-    username = `${base.slice(0, 36)}.${++attempt}`;
-  }
 
   return prisma.user.create({
     data: {
       email: data.email,
-      username,
+      username: await deriveUsername(prisma, data.email),
       displayName: data.displayName,
       jobTitle: data.jobTitle ?? null,
       role: data.role,
@@ -84,9 +94,18 @@ export async function createMember(data: CreateMemberInput) {
   });
 }
 
-export async function updateMember(id: string, data: UpdateMemberInput, requesterId: string) {
+export async function updateMember(id: string, data: UpdateMemberInput, requester: Requester) {
   const member = await prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
   if (!member) throw new NotFoundError("Team member not found");
+
+  // Who holds which role is the one thing a dashboard admin cannot edit —
+  // otherwise the scope would quietly be a route to promoting yourself, and
+  // handing out authority is meant to have a single source. Compared against
+  // the current value so an edit that merely echoes the role back (the form
+  // submits every field) is not mistaken for an attempt to change it.
+  if (data.role !== undefined && data.role !== member.role && !requester.isSuperAdmin) {
+    throw new ForbiddenError("Only a super admin can change roles");
+  }
 
   // Guard against the last super admin being demoted or switched off — nobody
   // could grant roles again, and only a super admin can.
@@ -101,7 +120,7 @@ export async function updateMember(id: string, data: UpdateMemberInput, requeste
     if (others === 0) throw new BadRequestError("The last super admin cannot be removed");
   }
 
-  if (data.isActive === false && id === requesterId) {
+  if (data.isActive === false && id === requester.id) {
     throw new BadRequestError("You cannot deactivate your own account");
   }
 
