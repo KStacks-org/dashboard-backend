@@ -56,6 +56,27 @@ describe("authentication", () => {
     expect(res.body.error.code).toBe("EMAIL_NOT_ALLOWED");
   });
 
+  it("keeps a service-only identity out of the dashboard while still allowing its service token", async () => {
+    const user = await createTestUser({ hasDashboardAccess: false });
+    createdUserIds.push(user.id);
+
+    const token = await signTestAccessToken(user);
+    const cookie = `access_token=${token}`;
+
+    const dashboard = await request(app).get("/api/auth/me").set("Cookie", cookie);
+    expect(dashboard.status).toBe(403);
+    expect(dashboard.body.error.code).toBe("DASHBOARD_ACCESS_DENIED");
+    expect(dashboard.body.error.details.email).toBe(user.email);
+
+    const workspace = await request(app).get("/api/tasks").set("Cookie", cookie);
+    expect(workspace.status).toBe(403);
+    expect(workspace.body.error.code).toBe("DASHBOARD_ACCESS_DENIED");
+
+    const serviceToken = await request(app).get("/api/auth/token").set("Cookie", cookie);
+    expect(serviceToken.status).toBe(200);
+    expect(serviceToken.body.tokenType).toBe("Bearer");
+  });
+
   it("matches the roster email case-insensitively", async () => {
     const user = await createTestUser();
     createdUserIds.push(user.id);

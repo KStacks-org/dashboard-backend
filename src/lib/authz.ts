@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma.js";
+import { serviceRoleScope } from "@/lib/serviceAccess.js";
 
 /**
  * The scope that means "this app". Every other scope is a service codename.
@@ -13,6 +14,11 @@ export type Grants = {
   isSuperAdmin: boolean;
   scopes: string[];
 };
+
+/** Opening the dashboard is an explicit membership decision. */
+export function canAccessDashboard(user: { hasDashboardAccess: boolean }, grants: Grants): boolean {
+  return grants.isSuperAdmin || user.hasDashboardAccess;
+}
 
 /** Reads the scopes held by one person. A super admin holds all of them. */
 export async function loadGrants(userId: string, role: string): Promise<Grants> {
@@ -34,15 +40,20 @@ export function canAdministerDashboard(grants: Grants): boolean {
   return grants.isSuperAdmin || grants.scopes.includes(DASHBOARD_SCOPE);
 }
 
+/** Whether this person owns at least one service-wide ADMIN scope. */
+export function canAdministerAnyService(grants: Grants): boolean {
+  return grants.isSuperAdmin || grants.scopes.some((scope) => scope.endsWith("-ADMIN"));
+}
+
 /**
  * Admin of one particular service. Inside the dashboard this buys exactly one
  * thing — authority over the tasks and issues attached to that service — and
  * nothing else; the grant's real audience is the service itself.
  */
-export function canAdministerService(grants: Grants, codename: string | null): boolean {
+export function canAdministerService(grants: Grants, accessScopeKey: string | null): boolean {
   if (grants.isSuperAdmin) return true;
-  if (!codename) return false;
-  return grants.scopes.includes(codename);
+  if (!accessScopeKey) return false;
+  return grants.scopes.includes(serviceRoleScope(accessScopeKey, "ADMIN"));
 }
 
 /**
@@ -51,23 +62,32 @@ export function canAdministerService(grants: Grants, codename: string | null): b
  */
 export function canManageRecord(
   grants: Grants,
-  record: { authorId: string; serviceCodename: string | null },
+  record: { authorId: string; serviceAccessScopeKey: string | null },
   requesterId: string,
 ): boolean {
   if (record.authorId === requesterId) return true;
   if (canAdministerDashboard(grants)) return true;
-  return canAdministerService(grants, record.serviceCodename);
+  return canAdministerService(grants, record.serviceAccessScopeKey);
 }
 
 /**
- * Scopes that may be granted: this app, plus every service that actually
- * exists. Validated against the live catalogue rather than a hardcoded list, so
- * a service added by the sync becomes grantable with no code change.
+ * Scopes that may be granted: this app, every service's built-in ADMIN role,
+ * and its super-admin-defined custom roles. The catalogue stays the source of
+ * truth, so deleted or invented strings can never be granted.
  */
 export async function grantableScopes(): Promise<string[]> {
   const services = await prisma.service.findMany({
-    select: { codename: true },
+    select: {
+      accessScopeKey: true,
+      accessRoles: { select: { name: true }, orderBy: { name: "asc" } },
+    },
     orderBy: { sortOrder: "asc" },
   });
-  return [DASHBOARD_SCOPE, ...services.map((service) => service.codename)];
+  return [
+    DASHBOARD_SCOPE,
+    ...services.flatMap((service) => [
+      serviceRoleScope(service.accessScopeKey, "ADMIN"),
+      ...service.accessRoles.map((role) => serviceRoleScope(service.accessScopeKey, role.name)),
+    ]),
+  ];
 }

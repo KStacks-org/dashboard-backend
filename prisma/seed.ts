@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { serviceAccessKey } from "../src/lib/serviceAccess.js";
 
 const prisma = new PrismaClient();
 
@@ -179,7 +180,7 @@ async function main() {
         url: service.url,
         sortOrder: service.sortOrder,
       },
-      create: service,
+      create: { ...service, accessScopeKey: serviceAccessKey(service.name) },
     });
   }
   // healthCheckUrl is deliberately absent from the update block above so the

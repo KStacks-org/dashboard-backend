@@ -40,6 +40,18 @@ export class EmailNotAllowedError extends AppError {
   }
 }
 
+/** The identity is managed here, but has not been admitted to this dashboard. */
+export class DashboardAccessDeniedError extends AppError {
+  constructor(email?: string) {
+    super(
+      403,
+      "DASHBOARD_ACCESS_DENIED",
+      "This account has not been granted access to the dashboard",
+      email ? { email } : undefined,
+    );
+  }
+}
+
 export class ForbiddenError extends AppError {
   constructor(message = "You do not have permission to perform this action") {
     super(403, "FORBIDDEN", message);

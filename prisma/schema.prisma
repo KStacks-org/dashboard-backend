@@ -64,8 +64,8 @@ enum SponsoredProjectStatus {
 model User {
   id String @id @default(uuid())
 
-  /// The login identifier. Must sit on an allowed university domain and be on
-  /// the roster — there is no public sign-up, so this table *is* the allowlist.
+  /// The login identifier. Must sit on an allowed university domain. A row
+  /// makes the identity manageable here; dashboard membership is separate.
   email String @unique @db.VarChar(200)
 
   /// Stable internal key used by the seed to update a row in place, so a
@@ -79,6 +79,11 @@ model User {
   /// Free text so it can name internal repos (Infrastructure, Auth Service)
   /// that are not public KStack services.
   responsibilities String[] @default([])
+
+  /// Membership of the dashboard workspace is independent from merely having
+  /// an identity row. Service-only admins therefore remain known here without
+  /// being able to open the dashboard itself.
+  hasDashboardAccess Boolean @default(false) @map("has_dashboard_access")
 
   /// Soft-off switch: a removed member keeps their authored history but can no
   /// longer sign in or be assigned new work.
@@ -109,6 +114,8 @@ model Service {
   id          String        @id @default(uuid())
   name        String        @db.VarChar(100)
   codename    String        @unique @db.VarChar(50)
+  /// Immutable prefix used by service-facing JWT scopes, e.g. DEVS-ADMIN.
+  accessScopeKey String     @unique @map("access_scope_key") @db.VarChar(50)
   tagline     String        @db.VarChar(200)
   description String        @db.Text
   status      ServiceStatus @default(LIVE)
@@ -136,9 +143,25 @@ model Service {
   tasks        Task[]
   healthChecks ServiceHealthCheck[]
   issues       Issue[]
+  accessRoles  ServiceAccessRole[]
 
   @@index([ownerId])
   @@map("services")
+}
+
+/// A service-defined role that can be granted through the shared access token.
+/// ADMIN is built in and remains represented by the bare service codename for
+/// backwards compatibility; this table stores only additional roles.
+model ServiceAccessRole {
+  id        String   @id @default(uuid())
+  serviceId String   @map("service_id")
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  name      String   @db.VarChar(40)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([serviceId, name])
+  @@index([serviceId])
+  @@map("service_access_roles")
 }
 
 /// One recorded probe of a service's health endpoint.
@@ -359,11 +382,11 @@ model Notification {
 
 /// One admin scope held by one person.
 ///
-/// `scope` is either the literal "dashboard" — meaning full powers inside this
-/// app — or a service codename such as "kdevs". A service scope is mostly *not*
-/// about this app at all: it is minted into the shared token so the service
-/// itself can recognise its own admins. The single exception the dashboard
-/// honours is the tasks and issues attached to that service.
+/// `scope` is the literal "dashboard", a service role such as "DEVS-ADMIN",
+/// or a custom service role such as "DEVS-MENTOR".
+/// Service scopes are minted into the shared token for the service to interpret.
+/// The dashboard itself only gives the bare ADMIN scope authority over that
+/// service's tasks and issues; custom roles do not imply dashboard authority.
 ///
 /// Scopes are stored as plain strings rather than a foreign key so a grant can
 /// name "dashboard", and so a grant survives a service being renamed upstream.
@@ -372,7 +395,7 @@ model AdminGrant {
   userId String @map("user_id")
   user   User   @relation("GrantHolder", fields: [userId], references: [id], onDelete: Cascade)
 
-  scope String @db.VarChar(50)
+  scope String @db.VarChar(100)
 
   /// Who granted it. Kept for the audit trail; nulled rather than cascading so
   /// removing an account never erases the record of what it handed out.

@@ -11,6 +11,7 @@
  */
 import { env } from "@/config/env.js";
 import { prisma } from "@/lib/prisma.js";
+import { serviceAccessKey } from "@/lib/serviceAccess.js";
 
 export type ScrapedService = {
   name: string;
@@ -156,7 +157,11 @@ export async function writeCatalog(services: ScrapedService[]): Promise<number> 
     await prisma.service.upsert({
       where: { codename: service.codename },
       update: { ...service, sortOrder: index },
-      create: { ...service, sortOrder: index },
+      create: {
+        ...service,
+        accessScopeKey: serviceAccessKey(service.name),
+        sortOrder: index,
+      },
     });
   }
   return services.length;

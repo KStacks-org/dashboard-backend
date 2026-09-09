@@ -93,13 +93,16 @@ export async function updateIssue(id: string, data: UpdateIssueInput, actorId: s
 export async function deleteIssue(id: string, requesterId: string, grants: Grants) {
   const issue = await prisma.issue.findUnique({
     where: { id },
-    select: { reportedById: true, service: { select: { codename: true } } },
+    select: { reportedById: true, service: { select: { accessScopeKey: true } } },
   });
   if (!issue) throw new NotFoundError("Issue not found");
 
   const allowed = canManageRecord(
     grants,
-    { authorId: issue.reportedById, serviceCodename: issue.service?.codename ?? null },
+    {
+      authorId: issue.reportedById,
+      serviceAccessScopeKey: issue.service?.accessScopeKey ?? null,
+    },
     requesterId,
   );
   if (!allowed) {

@@ -84,6 +84,7 @@ describe("service catalogue write", () => {
 
     const created = await prisma.service.findUnique({ where: { codename } });
     expect(created?.name).toBe("Sync Test");
+    expect(created?.accessScopeKey).toBe("SYNC-TEST");
     expect(created?.logoUrl).toBe("https://kstacks.org/projects/ksynctest-dark.svg");
   });
 
@@ -111,6 +112,7 @@ describe("service catalogue write", () => {
 
     const after = await prisma.service.findUnique({ where: { codename } });
     expect(after?.name).toBe("Sync Test Renamed");
+    expect(after?.accessScopeKey).toBe("SYNC-TEST");
     expect(after?.status).toBe("BETA");
     expect(after?.overview).toBe("Team-authored overview");
     expect(after?.repoUrl).toBe("https://github.com/KStacks-org/example");

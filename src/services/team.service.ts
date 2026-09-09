@@ -15,6 +15,7 @@ const memberSelect = {
   role: true,
   jobTitle: true,
   responsibilities: true,
+  hasDashboardAccess: true,
   isActive: true,
   createdAt: true,
   adminGrants: { select: { scope: true }, orderBy: { scope: "asc" } },
@@ -69,9 +70,9 @@ export async function listTeam() {
 }
 
 /**
- * Adding someone needs the dashboard scope (the route enforces that); adding
- * them *as a super admin* is a different thing entirely and needs to come from
- * one, which is why the requester is passed in rather than assumed.
+ * Dashboard and service admins may add an identity (the route enforces that),
+ * but adding them *as a super admin* is a different thing entirely and must
+ * come from one, which is why the requester is passed in rather than assumed.
  */
 export async function createMember(data: CreateMemberInput, requester: Requester) {
   if (data.role === "SUPER_ADMIN" && !requester.isSuperAdmin) {
@@ -89,6 +90,8 @@ export async function createMember(data: CreateMemberInput, requester: Requester
       jobTitle: data.jobTitle ?? null,
       role: data.role,
       responsibilities: data.responsibilities ?? [],
+      // Adding an identity must not silently make them a dashboard member.
+      hasDashboardAccess: false,
     },
     select: memberSelect,
   });

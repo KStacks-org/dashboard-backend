@@ -1,15 +1,23 @@
 import { env, isProduction } from "@/config/env.js";
-import { EmailNotAllowedError, UnauthorizedError } from "@/errors/AppError.js";
+import {
+  DashboardAccessDeniedError,
+  EmailNotAllowedError,
+  UnauthorizedError,
+} from "@/errors/AppError.js";
+import { canAccessDashboard } from "@/lib/authz.js";
 import { issueServiceToken, publicJwks } from "@/lib/jwt.js";
 import { asyncHandler } from "@/utils/asyncHandler.js";
 
 const IDENTITY_COOKIES = ["access_token", "refresh_token"] as const;
 
 export const me = asyncHandler(async (req, res) => {
-  // auth-service confirmed who they are, but this app's roster doesn't (or
+  // auth-service confirmed who they are, but this app's directory doesn't (or
   // no longer does) — a different situation from never having signed in.
   if (req.deniedIdentity) throw new EmailNotAllowedError(req.deniedIdentity.email);
   if (!req.user) throw new UnauthorizedError();
+  if (!req.grants || !canAccessDashboard(req.user, req.grants)) {
+    throw new DashboardAccessDeniedError(req.user.email);
+  }
   // Scopes travel with the user so the UI can decide what to offer without a
   // second request. They describe authority, never grant it — every rule is
   // still enforced server-side.

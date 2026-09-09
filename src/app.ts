@@ -6,7 +6,7 @@ import { pinoHttp } from "pino-http";
 import { env, isProduction } from "@/config/env.js";
 import * as authController from "@/controllers/auth.controller.js";
 import { logger } from "@/lib/logger.js";
-import { attachUser, requireAuth } from "@/middleware/auth.js";
+import { attachUser, requireDashboardAccess } from "@/middleware/auth.js";
 import { verifyCsrf } from "@/middleware/csrf.js";
 import { errorHandler, notFoundHandler } from "@/middleware/errorHandler.js";
 import { publicSupportCors } from "@/middleware/publicCors.js";
@@ -58,7 +58,7 @@ export function createApp() {
   app.use("/api/auth", dashboardCors, authRouter);
 
   const protectedRouter = express.Router();
-  protectedRouter.use(dashboardCors, apiRateLimiter, requireAuth, verifyCsrf);
+  protectedRouter.use(dashboardCors, apiRateLimiter, requireDashboardAccess, verifyCsrf);
   protectedRouter.use("/services", serviceRouter);
   protectedRouter.use("/users", userRouter);
   protectedRouter.use("/tasks", taskRouter);

@@ -3,6 +3,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { env } from "@/config/env.js";
 import { prisma } from "@/lib/prisma.js";
+import { serviceRoleScope } from "@/lib/serviceAccess.js";
 import { app, cleanupUser, createTestUser, signInTestUser } from "./helpers.js";
 
 /**
@@ -15,7 +16,11 @@ describe("scoped admin roles", () => {
   const userIds: string[] = [];
   let serviceId: string;
   let serviceCodename: string;
+  let serviceAdminScope: string;
+  let serviceAccessScopeKey: string;
   let otherServiceId: string;
+  let otherServiceAdminScope: string;
+  let customRoleId: string | undefined;
 
   type Actor = { agent: ReturnType<typeof request.agent>; csrf: string; id: string };
   const agents: Record<string, Actor> = {};
@@ -45,7 +50,10 @@ describe("scoped admin roles", () => {
     if (!first || !second) throw new Error("Seed the services before running this suite");
     serviceId = first.id;
     serviceCodename = first.codename;
+    serviceAccessScopeKey = first.accessScopeKey;
+    serviceAdminScope = serviceRoleScope(first.accessScopeKey, "ADMIN");
     otherServiceId = second.id;
+    otherServiceAdminScope = serviceRoleScope(second.accessScopeKey, "ADMIN");
 
     await signIn("super", { role: "SUPER_ADMIN" });
     await signIn("member");
@@ -55,6 +63,9 @@ describe("scoped admin roles", () => {
 
   afterAll(async () => {
     await prisma.task.deleteMany({ where: { createdById: { in: userIds } } });
+    if (customRoleId) {
+      await prisma.serviceAccessRole.delete({ where: { id: customRoleId } }).catch(() => {});
+    }
     await Promise.all(userIds.map((id) => cleanupUser(id)));
     await prisma.$disconnect();
   });
@@ -135,9 +146,206 @@ describe("scoped admin roles", () => {
       const res = await as("super")
         .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)
         .set("x-csrf-token", as("super").csrf)
-        .send({ scopes: [serviceCodename] });
+        .send({ scopes: [serviceAdminScope] });
       expect(res.status).toBe(200);
-      expect(res.body.scopes).toEqual([serviceCodename]);
+      expect(res.body.scopes).toEqual([serviceAdminScope]);
+    });
+
+    it("only lets a super admin add, grant, and delete an uppercase custom role", async () => {
+      const roleName = `MENTOR_${Date.now()}`;
+
+      await as("member")
+        .agent.post(`/api/team/scopes/${serviceId}/roles`)
+        .set("x-csrf-token", as("member").csrf)
+        .send({ name: roleName })
+        .expect(403);
+
+      const created = await as("super")
+        .agent.post(`/api/team/scopes/${serviceId}/roles`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ name: roleName.toLowerCase() })
+        .expect(201);
+
+      customRoleId = created.body.scope.id;
+      const customScope = serviceRoleScope(serviceAccessScopeKey, roleName);
+      expect(created.body.scope).toMatchObject({
+        scope: customScope,
+        role: roleName,
+        serviceId,
+        serviceCodename,
+      });
+
+      await as("super")
+        .agent.post(`/api/team/scopes/${serviceId}/roles`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ name: roleName })
+        .expect(409);
+
+      const granted = await as("super")
+        .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ scopes: [serviceAdminScope, customScope] })
+        .expect(200);
+      expect(granted.body.scopes).toEqual([serviceAdminScope]);
+
+      const jwks = createLocalJWKSet((await request(app).get("/.well-known/jwks.json")).body);
+      const adminTokenRes = await as("serviceAdmin").agent.get("/api/auth/token").expect(200);
+      const { payload: adminPayload } = await jwtVerify(adminTokenRes.body.token, jwks);
+      expect(adminPayload.scopes).toEqual([serviceAdminScope]);
+
+      await as("super")
+        .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ scopes: [customScope] })
+        .expect(200);
+
+      const tokenRes = await as("serviceAdmin").agent.get("/api/auth/token").expect(200);
+      const { payload } = await jwtVerify(tokenRes.body.token, jwks);
+      expect(payload.scopes).toEqual([customScope]);
+
+      await as("super")
+        .agent.put(`/api/team/${as("member").id}/grants`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ scopes: [customScope] })
+        .expect(200);
+
+      const task = await as("super")
+        .agent.post("/api/tasks")
+        .set("x-csrf-token", as("super").csrf)
+        .send({
+          title: "Custom roles are not service admins",
+          assigneeIds: [as("super").id],
+          serviceId,
+        })
+        .expect(201);
+      await as("member")
+        .agent.delete(`/api/tasks/${task.body.task.id}`)
+        .set("x-csrf-token", as("member").csrf)
+        .expect(403);
+      await as("super")
+        .agent.delete(`/api/tasks/${task.body.task.id}`)
+        .set("x-csrf-token", as("super").csrf)
+        .expect(204);
+
+      await as("super")
+        .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ scopes: [serviceAdminScope] })
+        .expect(200);
+
+      const delegatedMember = await as("serviceAdmin")
+        .agent.post("/api/team")
+        .set("x-csrf-token", as("serviceAdmin").csrf)
+        .send({
+          email: `delegated.${Date.now()}@stu.kau.edu.sa`,
+          displayName: "Delegated service member",
+        })
+        .expect(201);
+      userIds.push(delegatedMember.body.member.id);
+      expect(delegatedMember.body.member).toMatchObject({
+        role: "MEMBER",
+        hasDashboardAccess: false,
+      });
+
+      await as("serviceAdmin")
+        .agent.patch(`/api/team/${delegatedMember.body.member.id}`)
+        .set("x-csrf-token", as("serviceAdmin").csrf)
+        .send({ displayName: "Service admin cannot edit profiles" })
+        .expect(403);
+
+      await as("serviceAdmin")
+        .agent.post("/api/team")
+        .set("x-csrf-token", as("serviceAdmin").csrf)
+        .send({
+          email: `forbidden.super.${Date.now()}@stu.kau.edu.sa`,
+          displayName: "Forbidden super admin",
+          role: "SUPER_ADMIN",
+        })
+        .expect(403);
+
+      await as("super")
+        .agent.put(`/api/team/${delegatedMember.body.member.id}/grants`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ scopes: [otherServiceAdminScope], hasDashboardAccess: false })
+        .expect(200);
+
+      const delegatedGrant = await as("serviceAdmin")
+        .agent.put(`/api/team/${delegatedMember.body.member.id}/grants`)
+        .set("x-csrf-token", as("serviceAdmin").csrf)
+        .send({
+          scopes: [otherServiceAdminScope, customScope],
+          hasDashboardAccess: false,
+        })
+        .expect(200);
+      expect(delegatedGrant.body.scopes).toEqual([customScope, otherServiceAdminScope].sort());
+
+      await as("serviceAdmin")
+        .agent.put(`/api/team/${delegatedMember.body.member.id}/grants`)
+        .set("x-csrf-token", as("serviceAdmin").csrf)
+        .send({ scopes: [customScope], hasDashboardAccess: false })
+        .expect(403);
+
+      await as("serviceAdmin")
+        .agent.put(`/api/team/${delegatedMember.body.member.id}/grants`)
+        .set("x-csrf-token", as("serviceAdmin").csrf)
+        .send({
+          scopes: [otherServiceAdminScope, customScope, serviceAdminScope],
+          hasDashboardAccess: false,
+        })
+        .expect(403);
+
+      await as("serviceAdmin")
+        .agent.put(`/api/team/${delegatedMember.body.member.id}/grants`)
+        .set("x-csrf-token", as("serviceAdmin").csrf)
+        .send({
+          scopes: [otherServiceAdminScope, customScope],
+          hasDashboardAccess: true,
+        })
+        .expect(403);
+
+      await as("serviceAdmin")
+        .agent.post(`/api/team/scopes/${serviceId}/roles`)
+        .set("x-csrf-token", as("serviceAdmin").csrf)
+        .send({ name: `INSTRUCTOR_${Date.now()}` })
+        .expect(403);
+
+      await as("member")
+        .agent.delete(`/api/team/scopes/${serviceId}/roles/${customRoleId}`)
+        .set("x-csrf-token", as("member").csrf)
+        .send({ confirmation: customScope })
+        .expect(403);
+
+      await as("super")
+        .agent.delete(`/api/team/scopes/${serviceId}/roles/${customRoleId}`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ confirmation: roleName })
+        .expect(400);
+
+      await as("super")
+        .agent.delete(`/api/team/scopes/${serviceId}/roles/${customRoleId}`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ confirmation: customScope })
+        .expect(204);
+      customRoleId = undefined;
+      expect(await prisma.adminGrant.count({ where: { scope: customScope } })).toBe(0);
+
+      const afterDeleteToken = await as("serviceAdmin").agent.get("/api/auth/token").expect(200);
+      const { payload: afterDeletePayload } = await jwtVerify(afterDeleteToken.body.token, jwks);
+      expect(afterDeletePayload.scopes).toEqual([serviceAdminScope]);
+
+      // Keep the shared fixture in its baseline state for the token tests below.
+      await Promise.all([
+        as("super")
+          .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)
+          .set("x-csrf-token", as("super").csrf)
+          .send({ scopes: [serviceAdminScope] })
+          .expect(200),
+        as("super")
+          .agent.put(`/api/team/${as("member").id}/grants`)
+          .set("x-csrf-token", as("super").csrf)
+          .send({ scopes: [] })
+          .expect(200),
+      ]);
     });
 
     it("rejects a scope that is not a real service", async () => {
@@ -160,14 +368,36 @@ describe("scoped admin roles", () => {
       const granted = await as("super")
         .agent.put(`/api/team/${as("member").id}/grants`)
         .set("x-csrf-token", as("super").csrf)
-        .send({ scopes: [serviceCodename] });
-      expect(granted.body.scopes).toEqual([serviceCodename]);
+        .send({ scopes: [serviceAdminScope] });
+      expect(granted.body.scopes).toEqual([serviceAdminScope]);
 
       const revoked = await as("super")
         .agent.put(`/api/team/${as("member").id}/grants`)
         .set("x-csrf-token", as("super").csrf)
         .send({ scopes: [] });
       expect(revoked.body.scopes).toEqual([]);
+    });
+
+    it("changes dashboard membership independently from service admin scopes", async () => {
+      const serviceOnly = await as("super")
+        .agent.put(`/api/team/${as("member").id}/grants`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ scopes: [serviceAdminScope], hasDashboardAccess: false })
+        .expect(200);
+
+      expect(serviceOnly.body).toEqual({
+        scopes: [serviceAdminScope],
+        hasDashboardAccess: false,
+      });
+      const stored = await prisma.user.findUniqueOrThrow({ where: { id: as("member").id } });
+      expect(stored.hasDashboardAccess).toBe(false);
+
+      // Restore this fixture because later cases exercise normal workspace work.
+      await as("super")
+        .agent.put(`/api/team/${as("member").id}/grants`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ scopes: [], hasDashboardAccess: true })
+        .expect(200);
     });
   });
 
@@ -246,7 +476,7 @@ describe("scoped admin roles", () => {
       });
 
       expect(payload.sub).toBe(as("serviceAdmin").id);
-      expect(payload.scopes).toEqual([serviceCodename]);
+      expect(payload.scopes).toEqual([serviceAdminScope]);
       expect(payload.super_admin).toBe(false);
     });
 

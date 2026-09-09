@@ -73,6 +73,7 @@ describe("team, issues, milestones and notifications", () => {
       expect(created.status).toBe(201);
       createdUserIds.push(created.body.member.id);
 
+      expect(created.body.member.hasDashboardAccess).toBe(false);
       expect(created.body.member.responsibilities).toEqual(["Index Service"]);
     });
 

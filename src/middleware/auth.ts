@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
-import { UnauthorizedError } from "@/errors/AppError.js";
+import { DashboardAccessDeniedError, UnauthorizedError } from "@/errors/AppError.js";
 import { verifyAuthServiceToken } from "@/lib/authServiceJwt.js";
-import { loadGrants } from "@/lib/authz.js";
+import { canAccessDashboard, loadGrants } from "@/lib/authz.js";
 import { claimUnownedDashboard } from "@/lib/bootstrap.js";
 import { prisma } from "@/lib/prisma.js";
 import { ensureCsrfCookie } from "@/middleware/csrf.js";
@@ -10,7 +10,7 @@ const ACCESS_TOKEN_COOKIE = "access_token";
 
 /**
  * Loads the current user onto req.user if auth-service's access_token cookie
- * verifies and the address is on this app's roster; never rejects.
+ * verifies and the address is managed by this app; never rejects.
  *
  * Two different "not signed in" outcomes are possible, and callers need to
  * tell them apart: no cookie, or one that fails verification, leaves
@@ -31,7 +31,7 @@ export async function attachUser(req: Request, res: Response, next: NextFunction
   const identity = await verifyAuthServiceToken(token).catch(() => null);
   if (!identity) return next();
 
-  // The roster stores addresses lowercased (see universityEmailSchema); match
+  // The directory stores addresses lowercased (see universityEmailSchema); match
   // the same way rather than trusting auth-service's casing to already agree.
   const email = identity.email.toLowerCase();
   let user = await prisma.user.findUnique({ where: { email } });
@@ -58,5 +58,17 @@ export async function attachUser(req: Request, res: Response, next: NextFunction
 /** Rejects unauthenticated requests. Must run after attachUser. */
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   if (!req.user) return next(new UnauthorizedError());
+  next();
+}
+
+/**
+ * Protects this workspace without blocking service-only identities from the
+ * shared-token endpoint mounted outside the workspace router.
+ */
+export function requireDashboardAccess(req: Request, _res: Response, next: NextFunction) {
+  if (!req.user || !req.grants) return next(new UnauthorizedError());
+  if (!canAccessDashboard(req.user, req.grants)) {
+    return next(new DashboardAccessDeniedError(req.user.email));
+  }
   next();
 }

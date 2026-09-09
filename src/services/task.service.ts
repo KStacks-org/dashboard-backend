@@ -166,13 +166,16 @@ export async function restoreTask(id: string) {
 export async function deleteTask(id: string, requesterId: string, grants: Grants) {
   const task = await prisma.task.findUnique({
     where: { id },
-    select: { createdById: true, service: { select: { codename: true } } },
+    select: { createdById: true, service: { select: { accessScopeKey: true } } },
   });
   if (!task) throw new NotFoundError("Task not found");
 
   const allowed = canManageRecord(
     grants,
-    { authorId: task.createdById, serviceCodename: task.service?.codename ?? null },
+    {
+      authorId: task.createdById,
+      serviceAccessScopeKey: task.service?.accessScopeKey ?? null,
+    },
     requesterId,
   );
   if (!allowed) {

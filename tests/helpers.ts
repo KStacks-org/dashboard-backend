@@ -5,6 +5,7 @@ import { createApp } from "@/app.js";
 import { env } from "@/config/env.js";
 import { __setAuthServiceJwksForTests } from "@/lib/authServiceJwt.js";
 import { prisma } from "@/lib/prisma.js";
+import { serviceAccessKey } from "@/lib/serviceAccess.js";
 import { extractCookie } from "./testUtils.js";
 
 export const app = createApp();
@@ -44,7 +45,10 @@ export async function signTestAccessToken(user: {
 }
 
 /** Creates an isolated, throwaway user for a single test run (never touches real seed data). */
-export async function createTestUser(overrides?: { isActive?: boolean }) {
+export async function createTestUser(overrides?: {
+  isActive?: boolean;
+  hasDashboardAccess?: boolean;
+}) {
   const suffix = randomUUID().slice(0, 8);
   const user = await prisma.user.create({
     data: {
@@ -53,6 +57,7 @@ export async function createTestUser(overrides?: { isActive?: boolean }) {
       email: `test.user.${suffix}@stu.kau.edu.sa`,
       displayName: `Test User ${suffix}`,
       isActive: overrides?.isActive ?? true,
+      hasDashboardAccess: overrides?.hasDashboardAccess ?? true,
     },
   });
   return user;
@@ -84,10 +89,12 @@ export async function signInTestUser(
 
 export async function createTestService() {
   const suffix = randomUUID().slice(0, 8);
+  const name = `Test Service ${suffix}`;
   return prisma.service.create({
     data: {
-      name: `Test Service ${suffix}`,
+      name,
       codename: `test-svc-${suffix}`,
+      accessScopeKey: serviceAccessKey(name),
       tagline: "Test tagline",
       description: "Test description",
       status: "LIVE",
