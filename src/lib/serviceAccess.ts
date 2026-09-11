@@ -5,8 +5,8 @@
 export function serviceAccessKey(name: string): string {
   const key = name
     .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   if (!key) throw new Error("A service needs an English access key");
   if (key.length > 50) throw new Error("A service access key cannot exceed 50 characters");
@@ -14,5 +14,5 @@ export function serviceAccessKey(name: string): string {
 }
 
 export function serviceRoleScope(accessKey: string, role: string): string {
-  return `${accessKey}-${role}`;
+  return `${accessKey}-${role}`.toLowerCase();
 }

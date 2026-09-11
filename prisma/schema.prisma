@@ -114,7 +114,7 @@ model Service {
   id          String        @id @default(uuid())
   name        String        @db.VarChar(100)
   codename    String        @unique @db.VarChar(50)
-  /// Immutable prefix used by service-facing JWT scopes, e.g. DEVS-ADMIN.
+  /// Immutable prefix used by service-facing JWT scopes, e.g. devs-admin.
   accessScopeKey String     @unique @map("access_scope_key") @db.VarChar(50)
   tagline     String        @db.VarChar(200)
   description String        @db.Text
@@ -382,14 +382,14 @@ model Notification {
 
 /// One admin scope held by one person.
 ///
-/// `scope` is the literal "dashboard", a service role such as "DEVS-ADMIN",
-/// or a custom service role such as "DEVS-MENTOR".
+/// `scope` is "dashboard-admin", or a service role such as "devs-admin",
+/// or a custom service role such as "devs-mentor".
 /// Service scopes are minted into the shared token for the service to interpret.
 /// The dashboard itself only gives the bare ADMIN scope authority over that
 /// service's tasks and issues; custom roles do not imply dashboard authority.
 ///
 /// Scopes are stored as plain strings rather than a foreign key so a grant can
-/// name "dashboard", and so a grant survives a service being renamed upstream.
+/// name "dashboard-admin", and so a grant survives a service being renamed upstream.
 model AdminGrant {
   id     String @id @default(uuid())
   userId String @map("user_id")

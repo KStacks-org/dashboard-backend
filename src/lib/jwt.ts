@@ -75,13 +75,21 @@ export type ServiceTokenSubject = {
   displayName: string;
 };
 
+function serializeScopes(scopes: string[]): string {
+  const dashboardScope = "dashboard-admin";
+  return [
+    ...scopes.filter((scope) => scope !== dashboardScope),
+    ...scopes.filter((scope) => scope === dashboardScope),
+  ].join(",");
+}
+
 /**
  * A token describing one person's authority across the KStack estate.
  *
  * `super_admin` is a wildcard: it is emitted alongside `scopes` rather than by
- * expanding it into every scope name, because the set of services changes. A
- * consumer that reads only `scopes` therefore under-grants a super admin, which
- * fails closed rather than open.
+ * expanding it into every scope name, because the set of services changes.
+ * `scopes` follows the KStack token contract: one comma-separated lowercase
+ * string (for example `devs-admin,dashboard-admin`), never a JSON array.
  */
 export async function issueServiceToken(user: ServiceTokenSubject, grants: Grants) {
   const { privateKey, kid } = await keys();
@@ -91,7 +99,7 @@ export async function issueServiceToken(user: ServiceTokenSubject, grants: Grant
     email: user.email,
     name: user.displayName,
     super_admin: grants.isSuperAdmin,
-    scopes: grants.scopes,
+    scopes: serializeScopes(grants.scopes),
   })
     .setProtectedHeader({ alg: ALGORITHM, kid, typ: "JWT" })
     .setSubject(user.id)

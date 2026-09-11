@@ -8,7 +8,7 @@ import { serviceRoleScope } from "@/lib/serviceAccess.js";
  * broad way; service grants exist mainly to be minted into the shared token so
  * the service itself can recognise its admins.
  */
-export const DASHBOARD_SCOPE = "dashboard";
+export const DASHBOARD_SCOPE = "dashboard-admin";
 
 export type Grants = {
   isSuperAdmin: boolean;

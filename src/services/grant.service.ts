@@ -178,7 +178,7 @@ export async function setGrants(
     }
   }
 
-  // SERVICE-ADMIN is the service-wide role. Keeping narrower roles beside it
+  // service-admin is the service-wide role. Keeping narrower roles beside it
   // would make the stored state and JWT ambiguous, so ADMIN canonicalizes the
   // service to a single scope.
   for (const admin of grantable.filter((entry) => !entry.isDashboard && entry.role === "ADMIN")) {

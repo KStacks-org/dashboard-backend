@@ -32,10 +32,10 @@ export async function signTestAccessToken(user: {
   id: string;
   email: string;
   displayName: string;
-  flags?: string[];
+  flags?: string;
 }) {
   const privateKey = await testKeysReady;
-  return new SignJWT({ name: user.displayName, email: user.email, flags: user.flags ?? [] })
+  return new SignJWT({ name: user.displayName, email: user.email, flags: user.flags ?? "" })
     .setProtectedHeader({ alg: TEST_KEY_ALG, kid: "test-key" })
     .setSubject(user.id)
     .setIssuer(env.AUTH_SERVICE_JWT_ISSUER)
@@ -71,7 +71,7 @@ export async function createTestUser(overrides?: {
  */
 export async function signInTestUser(
   user: { id: string; email: string; displayName: string },
-  flags: string[] = [],
+  flags = "",
 ) {
   const token = await signTestAccessToken({ ...user, flags });
   const agent = request.agent(app);

@@ -4,7 +4,7 @@ import { canAdministerAnyService, canAdministerDashboard } from "@/lib/authz.js"
 
 /**
  * Full authority inside this app — held by a super admin, or by anyone granted
- * the "dashboard" scope. Everything not gated by this stays equal-permission
+ * the "dashboard-admin" scope. Everything not gated by this stays equal-permission
  * between team members.
  */
 export function requireDashboardAdmin(req: Request, _res: Response, next: NextFunction) {

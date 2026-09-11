@@ -8,7 +8,7 @@ import { app, cleanupUser, createTestUser, signInTestUser } from "./helpers.js";
 
 /**
  * Scoped admin. A super admin holds everything and is the only one who can hand
- * authority out; a "dashboard" grant is full power inside this app; a service
+ * authority out; a "dashboard-admin" grant is full power inside this app; a service
  * grant is mostly for the service itself, and buys exactly one thing here —
  * authority over that service's tasks and issues.
  */
@@ -75,7 +75,7 @@ describe("scoped admin roles", () => {
       const res = await as("member")
         .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)
         .set("x-csrf-token", as("member").csrf)
-        .send({ scopes: ["dashboard"] });
+        .send({ scopes: ["dashboard-admin"] });
       expect(res.status).toBe(403);
     });
 
@@ -83,13 +83,13 @@ describe("scoped admin roles", () => {
       await as("super")
         .agent.put(`/api/team/${as("dashboardAdmin").id}/grants`)
         .set("x-csrf-token", as("super").csrf)
-        .send({ scopes: ["dashboard"] })
+        .send({ scopes: ["dashboard-admin"] })
         .expect(200);
 
       const res = await as("dashboardAdmin")
         .agent.put(`/api/team/${as("member").id}/grants`)
         .set("x-csrf-token", as("dashboardAdmin").csrf)
-        .send({ scopes: ["dashboard"] });
+        .send({ scopes: ["dashboard-admin"] });
       expect(res.status).toBe(403);
     });
 
@@ -191,7 +191,7 @@ describe("scoped admin roles", () => {
       const jwks = createLocalJWKSet((await request(app).get("/.well-known/jwks.json")).body);
       const adminTokenRes = await as("serviceAdmin").agent.get("/api/auth/token").expect(200);
       const { payload: adminPayload } = await jwtVerify(adminTokenRes.body.token, jwks);
-      expect(adminPayload.scopes).toEqual([serviceAdminScope]);
+      expect(adminPayload.scopes).toBe(serviceAdminScope);
 
       await as("super")
         .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)
@@ -201,7 +201,7 @@ describe("scoped admin roles", () => {
 
       const tokenRes = await as("serviceAdmin").agent.get("/api/auth/token").expect(200);
       const { payload } = await jwtVerify(tokenRes.body.token, jwks);
-      expect(payload.scopes).toEqual([customScope]);
+      expect(payload.scopes).toBe(customScope);
 
       await as("super")
         .agent.put(`/api/team/${as("member").id}/grants`)
@@ -331,7 +331,7 @@ describe("scoped admin roles", () => {
 
       const afterDeleteToken = await as("serviceAdmin").agent.get("/api/auth/token").expect(200);
       const { payload: afterDeletePayload } = await jwtVerify(afterDeleteToken.body.token, jwks);
-      expect(afterDeletePayload.scopes).toEqual([serviceAdminScope]);
+      expect(afterDeletePayload.scopes).toBe(serviceAdminScope);
 
       // Keep the shared fixture in its baseline state for the token tests below.
       await Promise.all([
@@ -360,7 +360,7 @@ describe("scoped admin roles", () => {
       const res = await as("super")
         .agent.put(`/api/team/${as("super").id}/grants`)
         .set("x-csrf-token", as("super").csrf)
-        .send({ scopes: ["dashboard"] });
+        .send({ scopes: ["dashboard-admin"] });
       expect(res.status).toBe(400);
     });
 
@@ -476,8 +476,28 @@ describe("scoped admin roles", () => {
       });
 
       expect(payload.sub).toBe(as("serviceAdmin").id);
-      expect(payload.scopes).toEqual([serviceAdminScope]);
+      expect(payload.scopes).toBe(serviceAdminScope);
       expect(payload.super_admin).toBe(false);
+    });
+
+    it("serializes multiple lowercase scopes as one comma-separated string", async () => {
+      await as("super")
+        .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ scopes: [serviceAdminScope, "dashboard-admin"] })
+        .expect(200);
+
+      const tokenRes = await as("serviceAdmin").agent.get("/api/auth/token").expect(200);
+      const jwks = createLocalJWKSet((await request(app).get("/.well-known/jwks.json")).body);
+      const { payload } = await jwtVerify(tokenRes.body.token, jwks);
+
+      expect(payload.scopes).toBe(`${serviceAdminScope},dashboard-admin`);
+
+      await as("super")
+        .agent.put(`/api/team/${as("serviceAdmin").id}/grants`)
+        .set("x-csrf-token", as("super").csrf)
+        .send({ scopes: [serviceAdminScope] })
+        .expect(200);
     });
 
     it("marks a super admin with the wildcard claim", async () => {

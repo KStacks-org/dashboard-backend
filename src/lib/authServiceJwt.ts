@@ -31,10 +31,11 @@ export type AuthServiceUser = {
    * through untouched the moment that ships — the one to check for is
    * "super-admin" (auth-service's own `Flag.SUPER_ADMIN` constant).
    *
-   * A missing claim yields an empty list, never a default-allow: no claim
+   * Flags use auth-service's comma-separated string contract. A missing claim
+   * yields an empty string, never a default-allow: no claim
    * means no authority.
    */
-  flags: string[];
+  flags: string;
 };
 
 /**
@@ -57,9 +58,7 @@ export async function verifyAuthServiceToken(token: string): Promise<AuthService
       id,
       name,
       email,
-      flags: Array.isArray(flags)
-        ? flags.filter((flag): flag is string => typeof flag === "string")
-        : [],
+      flags: typeof flags === "string" ? flags : "",
     };
   } catch (err) {
     if (err instanceof UnauthorizedError) throw err;
