@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma.js";
-import { serviceRoleScope } from "@/lib/serviceAccess.js";
+import { normalizeAccessScope, serviceRoleScope } from "@/lib/serviceAccess.js";
 
 /**
  * The scope that means "this app". Every other scope is a service codename.
@@ -28,7 +28,10 @@ export async function loadGrants(userId: string, role: string): Promise<Grants> 
     orderBy: { scope: "asc" },
   });
 
-  return { isSuperAdmin: role === "SUPER_ADMIN", scopes: rows.map((row) => row.scope) };
+  return {
+    isSuperAdmin: role === "SUPER_ADMIN",
+    scopes: rows.map((row) => normalizeAccessScope(row.scope)),
+  };
 }
 
 /**
@@ -37,12 +40,18 @@ export async function loadGrants(userId: string, role: string): Promise<Grants> 
  * since holding every scope is what the role means.
  */
 export function canAdministerDashboard(grants: Grants): boolean {
-  return grants.isSuperAdmin || grants.scopes.includes(DASHBOARD_SCOPE);
+  return (
+    grants.isSuperAdmin ||
+    grants.scopes.some((scope) => normalizeAccessScope(scope) === DASHBOARD_SCOPE)
+  );
 }
 
-/** Whether this person owns at least one service-wide ADMIN scope. */
+/** Whether this person owns at least one service-wide admin scope. */
 export function canAdministerAnyService(grants: Grants): boolean {
-  return grants.isSuperAdmin || grants.scopes.some((scope) => scope.endsWith("-ADMIN"));
+  return (
+    grants.isSuperAdmin ||
+    grants.scopes.some((scope) => normalizeAccessScope(scope).endsWith("-admin"))
+  );
 }
 
 /**
@@ -53,7 +62,8 @@ export function canAdministerAnyService(grants: Grants): boolean {
 export function canAdministerService(grants: Grants, accessScopeKey: string | null): boolean {
   if (grants.isSuperAdmin) return true;
   if (!accessScopeKey) return false;
-  return grants.scopes.includes(serviceRoleScope(accessScopeKey, "ADMIN"));
+  const adminScope = serviceRoleScope(accessScopeKey, "admin");
+  return grants.scopes.some((scope) => normalizeAccessScope(scope) === adminScope);
 }
 
 /**
@@ -71,7 +81,7 @@ export function canManageRecord(
 }
 
 /**
- * Scopes that may be granted: this app, every service's built-in ADMIN role,
+ * Scopes that may be granted: this app, every service's built-in admin role,
  * and its super-admin-defined custom roles. The catalogue stays the source of
  * truth, so deleted or invented strings can never be granted.
  */
@@ -86,7 +96,7 @@ export async function grantableScopes(): Promise<string[]> {
   return [
     DASHBOARD_SCOPE,
     ...services.flatMap((service) => [
-      serviceRoleScope(service.accessScopeKey, "ADMIN"),
+      serviceRoleScope(service.accessScopeKey, "admin"),
       ...service.accessRoles.map((role) => serviceRoleScope(service.accessScopeKey, role.name)),
     ]),
   ];

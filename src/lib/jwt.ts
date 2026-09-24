@@ -3,6 +3,7 @@ import { type CryptoKey, exportJWK, generateKeyPair, importPKCS8, SignJWT } from
 import { env } from "@/config/env.js";
 import type { Grants } from "@/lib/authz.js";
 import { logger } from "@/lib/logger.js";
+import { normalizeAccessScope } from "@/lib/serviceAccess.js";
 
 /**
  * Mints the token other KStack services read to learn who someone is and what
@@ -77,9 +78,10 @@ export type ServiceTokenSubject = {
 
 function serializeScopes(scopes: string[]): string {
   const dashboardScope = "dashboard-admin";
+  const normalized = scopes.map(normalizeAccessScope);
   return [
-    ...scopes.filter((scope) => scope !== dashboardScope),
-    ...scopes.filter((scope) => scope === dashboardScope),
+    ...normalized.filter((scope) => scope !== dashboardScope),
+    ...normalized.filter((scope) => scope === dashboardScope),
   ].join(",");
 }
 

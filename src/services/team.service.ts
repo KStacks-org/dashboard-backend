@@ -5,6 +5,7 @@ import {
   NotFoundError,
 } from "@/errors/AppError.js";
 import { prisma } from "@/lib/prisma.js";
+import { normalizeAccessScope } from "@/lib/serviceAccess.js";
 import { deriveUsername } from "@/lib/username.js";
 import type { CreateMemberInput, UpdateMemberInput } from "@/validation/team.schema.js";
 
@@ -57,6 +58,9 @@ export async function listTeam() {
 
     return {
       ...member,
+      adminGrants: member.adminGrants.map(({ scope }) => ({
+        scope: normalizeAccessScope(scope),
+      })),
       workload: {
         activeTasks: active.length,
         completedTasks: mine.length - active.length,

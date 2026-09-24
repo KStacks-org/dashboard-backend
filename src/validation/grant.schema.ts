@@ -3,7 +3,9 @@ import { z } from "zod";
 export const setGrantsSchema = z.object({
   // Validated against the live catalogue in the service; the shape check here
   // only keeps obvious junk out of the query.
-  scopes: z.array(z.string().trim().min(1).max(100)).max(100),
+  scopes: z
+    .array(z.string().trim().min(1).max(100).transform((scope) => scope.toLowerCase()))
+    .max(100),
   // Optional for compatibility with already-open admin pages; omission keeps
   // the current membership decision unchanged.
   hasDashboardAccess: z.boolean().optional(),

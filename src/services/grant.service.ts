@@ -1,7 +1,7 @@
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/errors/AppError.js";
 import { DASHBOARD_SCOPE } from "@/lib/authz.js";
 import { prisma } from "@/lib/prisma.js";
-import { serviceRoleScope } from "@/lib/serviceAccess.js";
+import { normalizeAccessScope, serviceRoleScope } from "@/lib/serviceAccess.js";
 import type {
   CreateServiceAccessRoleInput,
   DeleteServiceAccessRoleInput,
@@ -222,5 +222,5 @@ export async function listGrants(userId: string) {
     select: { scope: true },
     orderBy: { scope: "asc" },
   });
-  return rows.map((row) => row.scope);
+  return rows.map((row) => normalizeAccessScope(row.scope));
 }

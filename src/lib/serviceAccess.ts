@@ -13,6 +13,11 @@ export function serviceAccessKey(name: string): string {
   return key;
 }
 
+/** Scope identifiers are lowercase at every API, database, and JWT boundary. */
+export function normalizeAccessScope(scope: string): string {
+  return scope.trim().toLowerCase();
+}
+
 export function serviceRoleScope(accessKey: string, role: string): string {
-  return `${accessKey}-${role}`.toLowerCase();
+  return normalizeAccessScope(`${accessKey}-${role}`);
 }
