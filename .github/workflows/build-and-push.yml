@@ -3,11 +3,10 @@ name: Build and Push to GHCR
 on:
   push:
     branches:
-      - prod
-      - dev
+      - main
   pull_request:
     branches:
-      - prod
+      - main
   workflow_dispatch:
 
 env:
@@ -62,49 +61,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
-
-  update-infra:
-    name: Update image tag in infra repo
-    needs: build-and-push
-    # Only run on direct pushes to prod (not PRs, not dev)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/prod'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout infra repository
-        uses: actions/checkout@v4
-        with:
-          repository: KStacks-org/infra
-          token: ${{ secrets.INFRA_PAT }}
-          path: infra
-
-      - name: Update dashboard-backend image tag
-        run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
-          NEW_IMAGE="ghcr.io/kstacks-org/dashboard-backend:prod-${SHORT_SHA}"
-          FILE="infra/dashboard-backend/deployment.yaml"
-
-          yq -i ".spec.template.spec.containers[0].image = \"${NEW_IMAGE}\"" "$FILE"
-
-          # The migration initContainer runs `prisma migrate deploy` out of this
-          # same image, so it has to move with it — left behind, a release would
-          # apply the previous build's migrations to the new one's schema. The
-          # has() guard keeps this a true no-op on a manifest with no
-          # initContainers: `[]?` alone would still write back an empty list.
-          yq -i "(select(.spec.template.spec | has(\"initContainers\")) | .spec.template.spec.initContainers[] | select(.name == \"migrate\") | .image) = \"${NEW_IMAGE}\"" "$FILE"
-
-          echo "Updated image to: ${NEW_IMAGE}"
-          yq '.spec.template.spec.containers[0].image' "$FILE"
-
-      - name: Commit and push changes
-        run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
-          cd infra
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dashboard-backend/deployment.yaml
-          git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore(dashboard-backend): bump image to prod-${SHORT_SHA}"
-          git push
