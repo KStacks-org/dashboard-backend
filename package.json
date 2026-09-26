@@ -1,5 +1,5 @@
 {
-  "name": "kstacks-dashboard-backend",
+  "name": "kstacks-dashboard-service",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.30.3",
